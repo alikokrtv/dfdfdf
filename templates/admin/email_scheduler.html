@@ -1,0 +1,424 @@
+{% extends "layout.html" %}
+
+{% block title %}E-posta Zamanlayıcısı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">E-posta Zamanlayıcısı Yönetimi</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('dof.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.users') }}">Admin</a></li>
+                <li class="breadcrumb-item active">E-posta Zamanlayıcısı</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Durum Kartı -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header {% if scheduler_status.running %}bg-success text-white{% else %}bg-danger text-white{% endif %}">
+                    <h5 class="mb-0">
+                        <i class="fas {% if scheduler_status.running %}fa-play-circle{% else %}fa-stop-circle{% endif %} me-2"></i>
+                        Zamanlayıcı Durumu
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Durum:</strong>
+                        </div>
+                        <div class="col-6">
+                            {% if scheduler_status.running %}
+                                <span class="badge bg-success">Çalışıyor</span>
+                            {% else %}
+                                <span class="badge bg-danger">Durduruldu</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <strong>Aktif İş Sayısı:</strong>
+                        </div>
+                        <div class="col-6">
+                            {{ scheduler_status.jobs|length }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>
+                        Kontrol Paneli
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="controlForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="btn-group" role="group">
+                            {% if scheduler_status.running %}
+                                <button type="submit" name="action" value="stop" class="btn btn-danger">
+                                    <i class="fas fa-stop me-1"></i> Durdur
+                                </button>
+                            {% else %}
+                                <button type="submit" name="action" value="start" class="btn btn-success">
+                                    <i class="fas fa-play me-1"></i> Başlat
+                                </button>
+                            {% endif %}
+                            
+                            <button type="button" onclick="submitPreview()" class="btn btn-warning">
+                                <i class="fas fa-eye me-1"></i> Önizleme
+                            </button>
+                            
+                            <button type="button" onclick="submitTest()" class="btn btn-info">
+                                <i class="fas fa-vial me-1"></i> Test Gönder
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- E-posta Önizleme -->
+    {% if preview_mode and preview_data %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">
+                <i class="fas fa-eye me-2"></i>
+                E-posta Gönderim Önizlemesi
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Toplam {{ preview_data.total_recipients }} kişiye</strong> günlük DÖF raporu gönderilecek.
+                Aşağıda ilk 10 alıcının detaylarını görebilirsiniz.
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Alıcı</th>
+                            <th>Rol</th>
+                            <th>E-posta</th>
+                            <th>Sorumlu Departmanlar</th>
+                            <th>DÖF İstatistikleri</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for recipient in preview_data.recipients %}
+                        <tr>
+                            <td>
+                                <strong>{{ recipient.user.full_name }}</strong>
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{ recipient.user.role_name }}</span>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ recipient.user.email }}</small>
+                            </td>
+                            <td>
+                                {% for dept in recipient.departments %}
+                                    <span class="badge bg-secondary me-1">{{ dept.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <small>
+                                    <div>📊 Açık: <strong>{{ recipient.statistics.total_open }}</strong></div>
+                                    <div>✅ Kapatılan (7 gün): <strong class="text-success">{{ recipient.statistics.total_closed_week }}</strong></div>
+                                    <div>⚠️ Gecikmiş: <strong class="text-danger">{{ recipient.statistics.total_overdue }}</strong></div>
+                                    <div>⏰ Yaklaşan: <strong class="text-warning">{{ recipient.statistics.total_upcoming }}</strong></div>
+                                </small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if preview_data.total_recipients > 10 %}
+            <div class="alert alert-light">
+                <i class="fas fa-ellipsis-h me-2"></i>
+                <strong>{{ preview_data.total_recipients - 10 }} kişi daha</strong> listelenmiyor. 
+                Toplam <strong>{{ preview_data.total_recipients }} kişi</strong> rapor alacak.
+            </div>
+            {% endif %}
+            
+                         <div class="d-flex gap-2 mt-3">
+                 <form method="POST" class="d-inline">
+                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                     <button type="submit" name="action" value="test" class="btn btn-success">
+                         <i class="fas fa-paper-plane me-1"></i> Test Gönderimini Onayla
+                     </button>
+                 </form>
+                <a href="{{ url_for('admin.email_scheduler') }}" class="btn btn-secondary">
+                    <i class="fas fa-times me-1"></i> İptal
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- E-posta İstatistikleri -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Son 7 Gün E-posta İstatistikleri
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="d-flex flex-column">
+                                <span class="fs-2 fw-bold text-primary">{{ email_stats.total }}</span>
+                                <span class="text-muted">Toplam Gönderim</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex flex-column">
+                                <span class="fs-2 fw-bold text-success">{{ email_stats.sent }}</span>
+                                <span class="text-muted">Başarılı</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex flex-column">
+                                <span class="fs-2 fw-bold text-danger">{{ email_stats.failed }}</span>
+                                <span class="text-muted">Başarısız</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-flex flex-column">
+                                <span class="fs-2 fw-bold text-info">{{ email_stats.success_rate }}%</span>
+                                <span class="text-muted">Başarı Oranı</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% if email_stats.total > 0 %}
+                    <div class="progress mt-3" style="height: 10px;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ email_stats.success_rate }}%"></div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Son E-posta Gönderimler -->
+    {% if recent_emails %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-envelope me-2"></i>
+                Son E-posta Gönderimler
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Konu</th>
+                            <th>Alıcı</th>
+                            <th>Durum</th>
+                            <th>Tarih</th>
+                            <th>Hata</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for email in recent_emails %}
+                        <tr>
+                            <td>{{ email.subject[:50] }}...</td>
+                            <td>{{ email.recipients }}</td>
+                            <td>
+                                {% if email.status == 'sent' %}
+                                    <span class="badge bg-success">Gönderildi</span>
+                                {% elif email.status == 'failed' %}
+                                    <span class="badge bg-danger">Başarısız</span>
+                                {% else %}
+                                    <span class="badge bg-warning">{{ email.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ email.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td>
+                                {% if email.error %}
+                                    <small class="text-danger">{{ email.error[:30] }}...</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-center mt-3">
+                <a href="{{ url_for('admin.email_tracking') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-external-link-alt me-1"></i> Tüm E-posta Loglarını Görüntüle
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Zamanlanmış İşler -->
+    {% if scheduler_status.jobs %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-clock me-2"></i>
+                Zamanlanmış İşler
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>İş Adı</th>
+                            <th>ID</th>
+                            <th>Sonraki Çalışma</th>
+                            <th>Tetikleyici</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in scheduler_status.jobs %}
+                        <tr>
+                            <td>
+                                <strong>{{ job.name }}</strong>
+                            </td>
+                            <td>
+                                <code>{{ job.id }}</code>
+                            </td>
+                            <td>
+                                {% if job.next_run %}
+                                    <span class="badge bg-info">{{ job.next_run }}</span>
+                                {% else %}
+                                    <span class="text-muted">Bilinmiyor</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ job.trigger }}</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Açıklama ve Bilgiler -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-info-circle me-2"></i>
+                Günlük E-posta Raporu Hakkında
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6><i class="fas fa-envelope me-1"></i> Rapor İçeriği</h6>
+                    <ul class="list-unstyled ms-3">
+                        <li><i class="fas fa-check text-success me-1"></i> Açık DÖF sayıları</li>
+                        <li><i class="fas fa-check text-success me-1"></i> Bu hafta kapatılan DÖF'ler</li>
+                        <li><i class="fas fa-check text-success me-1"></i> Yaklaşan termin tarihleri</li>
+                        <li><i class="fas fa-check text-success me-1"></i> Gecikmiş DÖF'ler</li>
+                        <li><i class="fas fa-check text-success me-1"></i> Son aksiyonlar</li>
+                        <li><i class="fas fa-check text-success me-1"></i> Durum dağılımı</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6><i class="fas fa-users me-1"></i> Rapor Alacaklar</h6>
+                    <ul class="list-unstyled ms-3">
+                        <li><i class="fas fa-user-tie text-primary me-1"></i> Departman Yöneticileri</li>
+                        <li><i class="fas fa-user-tie text-primary me-1"></i> Bölge Müdürleri</li>
+                        <li><i class="fas fa-user-tie text-primary me-1"></i> Direktörler</li>
+                    </ul>
+                    
+                    <h6 class="mt-3"><i class="fas fa-clock me-1"></i> Zamanlama</h6>
+                    <ul class="list-unstyled ms-3">
+                        <li><i class="fas fa-calendar text-info me-1"></i> Her gün saat 17:00</li>
+                        <li><i class="fas fa-globe text-info me-1"></i> Türkiye saati (Europe/Istanbul)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-lightbulb me-2"></i>
+                <strong>Not:</strong> 
+                Test gönderimi yalnızca sistemin düzgün çalıştığını kontrol etmek içindir. 
+                Gerçek zamanlayıcı her gün otomatik olarak çalışır.
+            </div>
+            
+            <div class="alert alert-warning mt-2">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Dikkat:</strong> 
+                Zamanlayıcıyı durdurursanız, günlük raporlar gönderilmez. 
+                Sistemi yeniden başlattığınızda otomatik olarak tekrar çalışmaya başlar.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Form submit debug için
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('controlForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const submitter = e.submitter;
+            if (submitter) {
+                console.log('Form submitted with action:', submitter.value);
+            } else {
+                console.log('Form submitted without submitter');
+            }
+        });
+    }
+});
+
+// Preview fonksiyonu
+function submitPreview() {
+    console.log('Preview button clicked');
+    const form = document.getElementById('controlForm');
+    
+    // Hidden input ekle
+    const hiddenInput = document.createElement('input');
+    hiddenInput.type = 'hidden';
+    hiddenInput.name = 'action';
+    hiddenInput.value = 'preview';
+    form.appendChild(hiddenInput);
+    
+    console.log('Submitting form with preview action');
+    form.submit();
+}
+
+// Test fonksiyonu
+function submitTest() {
+    console.log('Test button clicked');
+    const form = document.getElementById('controlForm');
+    
+    // Hidden input ekle
+    const hiddenInput = document.createElement('input');
+    hiddenInput.type = 'hidden';
+    hiddenInput.name = 'action';
+    hiddenInput.value = 'test';
+    form.appendChild(hiddenInput);
+    
+    console.log('Submitting form with test action');
+    form.submit();
+}
+</script>
+{% endblock %} 

@@ -1,0 +1,76 @@
+2025-05-19 16:10:01,811 - apscheduler.scheduler - INFO - Scheduler started
+2025-05-19 16:10:01,813 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi baþlatýldý ===
+2025-05-19 16:10:02,191 - DOF_TEST - INFO - Emaar Departmaný: Emaar (ID: 5)
+2025-05-19 16:10:02,192 - DOF_TEST - INFO - Kanyon Departmaný: Kanyon (ID: 6)
+2025-05-19 16:10:02,192 - DOF_TEST - INFO - Oluþturucu: Emaar ÞUBELER (ID: 11, Email: socialmedia@pluskitchen.com.tr)
+2025-05-19 16:10:02,192 - DOF_TEST - INFO - Atanacak Kiþi: Kanyon ÞUBELER (ID: 12, Email: ali.kok@pluskitchen.com.tr)
+2025-05-19 16:10:02,192 - DOF_TEST - INFO - Kalite Yöneticileri: portal@pluskitchen.com.tr, quality@example.com
+2025-05-19 16:10:02,192 - DOF_TEST - ERROR - Test DÖF oluþturma hatasý: type object 'DOFStatus' has no attribute 'CREATED'
+2025-05-19 16:10:02,314 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi tamamlandý ===
+2025-05-19 16:11:10,522 - apscheduler.scheduler - INFO - Scheduler started
+2025-05-19 16:11:10,523 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi baþlatýldý ===
+2025-05-19 16:11:10,910 - DOF_TEST - INFO - Emaar Departmaný: Emaar (ID: 5)
+2025-05-19 16:11:10,910 - DOF_TEST - INFO - Kanyon Departmaný: Kanyon (ID: 6)
+2025-05-19 16:11:10,910 - DOF_TEST - INFO - Oluþturucu: Emaar ÞUBELER (ID: 11, Email: socialmedia@pluskitchen.com.tr)
+2025-05-19 16:11:10,910 - DOF_TEST - INFO - Atanacak Kiþi: Kanyon ÞUBELER (ID: 12, Email: ali.kok@pluskitchen.com.tr)
+2025-05-19 16:11:10,910 - DOF_TEST - INFO - Kalite Yöneticileri: portal@pluskitchen.com.tr, quality@example.com
+2025-05-19 16:11:11,209 - DOF_TEST - INFO - Test DÖF oluþturuldu: ID=419, Baþlýk=Emaar-Kanyon Test DÖF (19.05.2025 16:11:10)
+2025-05-19 16:11:11,437 - DOF_TEST - INFO - DÖF aksiyon kaydý oluþturuldu
+2025-05-19 16:11:11,671 - DOF_TEST - INFO - E-posta alýcýlarý: ali.kok@pluskitchen.com.tr, quality@example.com, portal@pluskitchen.com.tr
+2025-05-19 16:11:11,671 - DOF_TEST - INFO - Test e-postasý gönderiliyor: ali.kok@pluskitchen.com.tr
+2025-05-19 16:11:11,671 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:11:10) -> ali.kok@pluskitchen.com.tr
+2025-05-19 16:11:11,671 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:11:12,108 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:11:12,398 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> ali.kok@pluskitchen.com.tr
+2025-05-19 16:11:12,400 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\xd6' in position 460: ordinal not in range(128)
+2025-05-19 16:11:12,400 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:11:12,400 - DOF_TEST - INFO - Test e-postasý gönderiliyor: quality@example.com
+2025-05-19 16:11:12,400 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:11:10) -> quality@example.com
+2025-05-19 16:11:12,400 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:11:12,732 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:11:13,006 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> quality@example.com
+2025-05-19 16:11:13,007 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\xd6' in position 453: ordinal not in range(128)
+2025-05-19 16:11:13,008 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:11:13,008 - DOF_TEST - INFO - Test e-postasý gönderiliyor: portal@pluskitchen.com.tr
+2025-05-19 16:11:13,008 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:11:10) -> portal@pluskitchen.com.tr
+2025-05-19 16:11:13,008 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:11:13,340 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:11:13,611 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> portal@pluskitchen.com.tr
+2025-05-19 16:11:13,612 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\xd6' in position 459: ordinal not in range(128)
+2025-05-19 16:11:13,613 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:11:13,723 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi tamamlandý ===
+2025-05-19 16:14:29,462 - apscheduler.scheduler - INFO - Scheduler started
+2025-05-19 16:14:29,466 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi baþlatýldý ===
+2025-05-19 16:14:29,856 - DOF_TEST - INFO - Emaar Departmaný: Emaar (ID: 5)
+2025-05-19 16:14:29,856 - DOF_TEST - INFO - Kanyon Departmaný: Kanyon (ID: 6)
+2025-05-19 16:14:29,856 - DOF_TEST - INFO - Oluþturucu: Emaar ÞUBELER (ID: 11, Email: socialmedia@pluskitchen.com.tr)
+2025-05-19 16:14:29,856 - DOF_TEST - INFO - Atanacak Kiþi: Kanyon ÞUBELER (ID: 12, Email: hakanaycicek03@gmail.com)
+2025-05-19 16:14:29,856 - DOF_TEST - INFO - Kalite Yöneticileri: portal@pluskitchen.com.tr, quality@example.com
+2025-05-19 16:14:30,156 - DOF_TEST - INFO - Test DÖF oluþturuldu: ID=420, Baþlýk=Emaar-Kanyon Test DÖF (19.05.2025 16:14:29)
+2025-05-19 16:14:30,394 - DOF_TEST - INFO - DÖF aksiyon kaydý oluþturuldu
+2025-05-19 16:14:30,632 - DOF_TEST - INFO - E-posta alýcýlarý: hakanaycicek03@gmail.com, portal@pluskitchen.com.tr, quality@example.com
+2025-05-19 16:14:30,632 - DOF_TEST - INFO - Test e-postasý gönderiliyor: hakanaycicek03@gmail.com
+2025-05-19 16:14:30,632 - EmailSender - INFO - Orijinal alýcý: hakanaycicek03@gmail.com, test için alikokrtv@gmail.com adresine yönlendiriliyor
+2025-05-19 16:14:30,632 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:14:29) -> alikokrtv@gmail.com
+2025-05-19 16:14:30,632 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:14:30,973 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:14:31,256 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> alikokrtv@gmail.com
+2025-05-19 16:14:31,257 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\u0131' in position 458: ordinal not in range(128)
+2025-05-19 16:14:31,258 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:14:31,258 - DOF_TEST - INFO - Test e-postasý gönderiliyor: portal@pluskitchen.com.tr
+2025-05-19 16:14:31,258 - EmailSender - INFO - Orijinal alýcý: portal@pluskitchen.com.tr, test için alikokrtv@gmail.com adresine yönlendiriliyor
+2025-05-19 16:14:31,258 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:14:29) -> alikokrtv@gmail.com
+2025-05-19 16:14:31,258 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:14:31,590 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:14:31,864 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> alikokrtv@gmail.com
+2025-05-19 16:14:31,865 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\u0131' in position 458: ordinal not in range(128)
+2025-05-19 16:14:31,866 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:14:31,866 - DOF_TEST - INFO - Test e-postasý gönderiliyor: quality@example.com
+2025-05-19 16:14:31,866 - EmailSender - INFO - Orijinal alýcý: quality@example.com, test için alikokrtv@gmail.com adresine yönlendiriliyor
+2025-05-19 16:14:31,866 - EmailSender - INFO - E-posta gönderiliyor: DÖF Sistemi - Test Bildirimi: Emaar-Kanyon Test DÖF (19.05.2025 16:14:29) -> alikokrtv@gmail.com
+2025-05-19 16:14:31,866 - EmailSender - INFO - SMTP baðlantýsý kuruluyor: smtp.gmail.com:587
+2025-05-19 16:14:32,206 - EmailSender - INFO - SMTP giriþ yapýlýyor: alikokrtv@gmail.com
+2025-05-19 16:14:32,499 - EmailSender - INFO - E-posta gönderiliyor: alikokrtv@gmail.com -> alikokrtv@gmail.com
+2025-05-19 16:14:32,500 - EmailSender - ERROR - E-posta gönderimi baþarýsýz: 'ascii' codec can't encode character '\u0131' in position 458: ordinal not in range(128)
+2025-05-19 16:14:32,500 - DOF_TEST - INFO - E-posta gönderim sonucu: Baþarýsýz
+2025-05-19 16:14:32,616 - DOF_TEST - INFO - === Test DÖF oluþturma iþlemi tamamlandý ===

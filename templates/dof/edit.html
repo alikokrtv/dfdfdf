@@ -1,0 +1,194 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Düzenle - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<!-- Döküman Bilgileri -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="me-auto">
+                <span class="fw-bold">Döküman No:</span> P.03.F01.01
+            </div>
+            <div class="mx-4">
+                <span class="fw-bold">Yayın Tarihi:</span> 01.08.2023
+            </div>
+            <div>
+                <span class="fw-bold">Revizyon Tarihi:</span> 22.09.2023
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">DÖF Düzenle</h1>
+    <div>
+        <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Dön
+        </a>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('dof.edit_dof', dof_id=dof.id) }}" class="needs-validation" enctype="multipart/form-data" novalidate>
+            {{ form.csrf_token }}
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="{{ form.title.id }}" class="form-label required-field">{{ form.title.label }}</label>
+                    {{ form.title(class="form-control", required=true) }}
+                    <div class="invalid-feedback">
+                        Başlık alanı gereklidir
+                    </div>
+                    {% if form.title.errors %}
+                        <div class="text-danger">
+                            {% for error in form.title.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="{{ form.description.id }}" class="form-label required-field">{{ form.description.label }}</label>
+                    {{ form.description(class="form-control", rows=4, required=true) }}
+                    <div class="invalid-feedback">
+                        Açıklama alanı gereklidir
+                    </div>
+                    {% if form.description.errors %}
+                        <div class="text-danger">
+                            {% for error in form.description.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="{{ form.dof_type.id }}" class="form-label required-field">{{ form.dof_type.label }}</label>
+                    {{ form.dof_type(class="form-control select2", required=true) }}
+                    <div class="invalid-feedback">
+                        DÖF tipi seçimi gereklidir
+                    </div>
+                    {% if form.dof_type.errors %}
+                        <div class="text-danger">
+                            {% for error in form.dof_type.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-6">
+                    <label for="{{ form.dof_source.id }}" class="form-label required-field">{{ form.dof_source.label }}</label>
+                    {{ form.dof_source(class="form-control select2", required=true, id="dof_source") }}
+                    <div class="invalid-feedback">
+                        DÖF kaynağı seçimi gereklidir
+                    </div>
+                    {% if form.dof_source.errors %}
+                        <div class="text-danger">
+                            {% for error in form.dof_source.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% include 'dof/customer_fields.html' %}
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="{{ form.department.id }}" class="form-label">{{ form.department.label }}</label>
+                    {{ form.department(class="form-control select2") }}
+                    {% if form.department.errors %}
+                        <div class="text-danger">
+                            {% for error in form.department.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="{{ form.due_date.id }}" class="form-label">{{ form.due_date.label }}</label>
+                    {{ form.due_date(class="form-control", type="date") }}
+                    {% if form.due_date.errors %}
+                        <div class="text-danger">
+                            {% for error in form.due_date.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-6">
+                    <label for="{{ form.files.id }}" class="form-label">{{ form.files.label }}</label>
+                    {{ form.files(class="form-control", multiple=true) }}
+                    <small class="form-text text-muted">İzin verilen dosya tipleri: PDF, PNG, JPG, DOC, DOCX, XLS, XLSX (Max: 16MB)</small>
+                    {% if form.files.errors %}
+                        <div class="text-danger">
+                            {% for error in form.files.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-end">
+                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary me-2">İptal</a>
+                {{ form.submit(class="btn btn-primary") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Select2 initalize
+        $('.select2').select2({
+            theme: 'bootstrap4',
+            language: 'tr',
+            width: '100%'
+        });
+        
+        // Tarih alanı bugünden öncesini seçmeyi engelle
+        const today = new Date().toISOString().split('T')[0];
+        $('#due_date').attr('min', today);
+        
+        // Müşteri şikayeti alanlarını sadece DOFSource.CUSTOMER_COMPLAINT (3) seçildiğinde göster
+        function toggleCustomerComplaintFields() {
+            const selectedSource = $('#dof_source').val();
+            if (selectedSource == '3') { // Müşteri Talebi/Şikayeti
+                $('#customer_complaint_fields').show();
+                // Seçili kaynağa göre validasyon gerekliliklerini güncelle
+                $('#complaint_channel').prop('required', true);
+                $('#complaint_date').prop('required', true);
+            } else {
+                $('#customer_complaint_fields').hide();
+                // Diğer kaynaklarda bu alanlar gerekli değil
+                $('#complaint_channel').prop('required', false);
+                $('#complaint_date').prop('required', false);
+            }
+        }
+        
+        // Sayfa yüklendiğinde kontrol et
+        toggleCustomerComplaintFields();
+        
+        // DOF kaynağı değiştiğinde kontrol et
+        $('#dof_source').on('change', function() {
+            toggleCustomerComplaintFields();
+        });
+    });
+</script>
+{% endblock %}

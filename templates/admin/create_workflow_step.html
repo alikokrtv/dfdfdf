@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+
+{% block title %}Yeni İş Akışı Adımı Ekle - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">{{ workflow.name }} - Yeni Adım Ekle</h1>
+    <a href="{{ url_for('admin.workflow_steps', workflow_id=workflow.id) }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-1"></i> Adım Listesine Dön
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.create_workflow_step', workflow_id=workflow.id) }}" class="needs-validation" novalidate>
+            {{ form.csrf_token }}
+            {{ form.workflow_id() }}
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="{{ form.name.id }}" class="form-label required-field">{{ form.name.label }}</label>
+                    {{ form.name(class="form-control", required=true) }}
+                    <div class="invalid-feedback">
+                        Adım adı gereklidir
+                    </div>
+                    {% if form.name.errors %}
+                        <div class="text-danger">
+                            {% for error in form.name.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="{{ form.description.id }}" class="form-label">{{ form.description.label }}</label>
+                    {{ form.description(class="form-control", rows=3) }}
+                    {% if form.description.errors %}
+                        <div class="text-danger">
+                            {% for error in form.description.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="{{ form.step_order.id }}" class="form-label required-field">{{ form.step_order.label }}</label>
+                    {{ form.step_order(class="form-control", required=true, type="number", min=1) }}
+                    <div class="invalid-feedback">
+                        Sıra numarası gereklidir
+                    </div>
+                    {% if form.step_order.errors %}
+                        <div class="text-danger">
+                            {% for error in form.step_order.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-8">
+                    <label for="{{ form.required_role.id }}" class="form-label required-field">{{ form.required_role.label }}</label>
+                    {{ form.required_role(class="form-control select2", required=true) }}
+                    <div class="invalid-feedback">
+                        Rol seçimi gereklidir
+                    </div>
+                    {% if form.required_role.errors %}
+                        <div class="text-danger">
+                            {% for error in form.required_role.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="{{ form.from_status.id }}" class="form-label required-field">{{ form.from_status.label }}</label>
+                    {{ form.from_status(class="form-control select2", required=true) }}
+                    <div class="invalid-feedback">
+                        Başlangıç durumu gereklidir
+                    </div>
+                    {% if form.from_status.errors %}
+                        <div class="text-danger">
+                            {% for error in form.from_status.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-6">
+                    <label for="{{ form.to_status.id }}" class="form-label required-field">{{ form.to_status.label }}</label>
+                    {{ form.to_status(class="form-control select2", required=true) }}
+                    <div class="invalid-feedback">
+                        Hedef durum gereklidir
+                    </div>
+                    {% if form.to_status.errors %}
+                        <div class="text-danger">
+                            {% for error in form.to_status.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="form-check mt-2">
+                        {{ form.is_active(class="form-check-input") }}
+                        <label class="form-check-label" for="{{ form.is_active.id }}">
+                            {{ form.is_active.label }}
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-end">
+                <a href="{{ url_for('admin.workflow_steps', workflow_id=workflow.id) }}" class="btn btn-secondary me-2">İptal</a>
+                {{ form.submit(class="btn btn-primary") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Select2 initalize
+        $('.select2').select2({
+            theme: 'bootstrap4',
+            language: 'tr',
+            width: '100%'
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}DÖF Yönetim Sistemi{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.4.1/css/responsive.bootstrap5.min.css">
+    
+    <!-- Select2 CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@x.x.x/dist/select2-bootstrap4.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    
+    <style>
+        /* Loader Styles */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0s, opacity 0.3s;
+        }
+        
+        /* Mobil cihazlarda navbar düzenlemesi */
+        @media (max-width: 991.98px) {
+            .navbar .navbar-nav {
+                flex-direction: row !important;
+                margin-top: 10px;
+                justify-content: flex-end;
+            }
+            
+            .navbar .navbar-nav .nav-item {
+                margin-left: 15px;
+            }
+            
+            .user-dropdown {
+                width: 100%;
+                margin-top: 10px;
+                text-align: center;
+            }
+            
+            .navbar-collapse {
+                margin-top: 10px;
+            }
+        }
+
+        .loader-overlay.show {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* DÖF İlerleme Çubuğu Stilleri */
+        .progress-container {
+            width: 100%;
+            margin: 20px auto;
+            position: relative;
+        }
+        
+        .progressbar {
+            counter-reset: step;
+            padding: 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .progressbar li {
+            list-style-type: none;
+            position: relative;
+            text-align: center;
+            flex: 1;
+            font-size: 12px;
+            color: #777;
+            font-weight: 500;
+        }
+        
+        .progressbar li:before {
+            content: counter(step);
+            counter-increment: step;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            border: 2px solid #ddd;
+            display: block;
+            margin: 0 auto 10px auto;
+            border-radius: 50%;
+            background-color: white;
+            color: #777;
+            z-index: 1;
+        }
+        
+        .progressbar li:after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 3px;
+            background-color: #ddd;
+            top: 15px;
+            left: -50%;
+            z-index: 0;
+        }
+        
+        .progressbar li:first-child:after {
+            content: none;
+        }
+        
+        .progressbar li.active:before {
+            border-color: #3498db;
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .progressbar li.active:after {
+            background-color: #3498db;
+        }
+        
+        .progressbar li.current:before {
+            border-color: #e74c3c;
+            background-color: white;
+            color: #e74c3c;
+            border-width: 3px;
+            transform: scale(1.2);
+        }
+        
+        .current-step-info {
+            border-left: 4px solid #3498db;
+        }
+    </style>
+    
+    {% block styles %}{% endblock %}
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Loading overlay -->
+    <div id="loader-overlay" class="loader-overlay">
+        <div class="spinner"></div>
+    </div>
+    
+    {% if current_user.is_authenticated %}
+    <!-- Giriş Yapmış Kullanıcı İçeriği -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">    
+        <div class="container-fluid">
+            <button id="sidebarToggleBtn" class="btn d-lg-none me-2" type="button">
+                <i class="fas fa-bars"></i>
+            </button>
+            
+            <a class="navbar-brand" href="{{ url_for('dof.dashboard') }}">
+                <i class="fas fa-clipboard-check me-2"></i>DÖF Yönetim Sistemi
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link position-relative" href="#" id="feedback-button" data-bs-toggle="modal" data-bs-target="#feedbackModal">
+                            <i class="fas fa-comment-alt"></i>
+                            <span class="d-none d-lg-inline ms-1">Geri Bildirim</span>
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link position-relative" href="#" id="notification-button" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-bell"></i>
+                            {% set unread_count = current_user.notifications.filter_by(is_read=False).count() %}
+                            {% if unread_count > 0 %}
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notification-badge">
+                                {{ unread_count }}
+                                <span class="visually-hidden">okunmamış bildirim</span>
+                            </span>
+                            {% endif %}
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notification-button" style="max-width: 350px; overflow-x: hidden;">
+                            <h6 class="dropdown-header d-flex justify-content-between align-items-center">
+                                <span>Bildirimler</span>
+                                <span class="badge bg-secondary">{{ current_user.notifications.filter_by(is_read=False).count() }}/{{ current_user.notifications.count() }}</span>
+                            </h6>
+                            <div id="notification-list" class="scrollable-menu" style="max-height: 350px; overflow-y: auto; min-width: 300px;">
+                                <!-- Son 5 bildirimi doğrudan render et, JavaScript ile bekleme gerektirmez -->
+                                {% set recent_notifications = current_user.notifications.order_by(Notification.created_at.desc()).limit(5).all() %}
+                                {% if recent_notifications %}
+                                    {% for notification in recent_notifications %}
+                                        <a class="dropdown-item {% if not notification.is_read %}bg-light{% endif %}" href="{% if notification.dof_id %}{{ url_for('dof.detail', dof_id=notification.dof_id) }}{% else %}#{% endif %}">
+                                            <div class="d-flex align-items-start">
+                                                <div class="me-2">
+                                                    <i class="fas {% if not notification.is_read %}fa-bell text-primary{% else %}fa-bell-slash text-muted{% endif %}"></i>
+                                                </div>
+                                                <div class="small">
+                                                    <p class="mb-0">{{ notification.message }}</p>
+                                                    <small class="text-muted">{{ notification.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="dropdown-item text-center text-muted py-3">
+                                        <i class="far fa-bell-slash me-2"></i>Bildirim bulunmamaktadır
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a class="dropdown-item text-center" href="{{ url_for('notifications.all_notifications') }}">
+                                <i class="fas fa-list me-1"></i> Tüm Bildirimleri Görüntüle
+                            </a>
+                            {% if current_user.notifications.filter_by(is_read=False).count() > 0 %}
+                            <a class="dropdown-item text-center" href="{{ url_for('notifications.mark_all_read') }}">
+                                <i class="fas fa-check-double me-1"></i> Tümünü Okundu İşaretle
+                            </a>
+                            {% endif %}
+                        </div>
+                    </li>
+                    
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle me-1"></i>{{ current_user.first_name }} {{ current_user.last_name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}"><i class="fas fa-user me-2"></i>Profil</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}"><i class="fas fa-key me-2"></i>Şifre Değiştir</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Çıkış Yap</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12 col-lg-2 bg-white sidebar shadow-sm" id="sidebar">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dof.dashboard') }}">
+                                <i class="fas fa-home"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dof.list_dofs') }}">
+                                <i class="fas fa-clipboard-list"></i> Tüm DÖF'ler
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dof.create_dof') }}">
+                                <i class="fas fa-plus-circle"></i> Yeni DÖF
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dof.reports') }}">
+                                <i class="fas fa-chart-line"></i> DÖF Raporlarım
+                            </a>
+                        </li>
+                        
+                        {% if current_user.role == 4 and current_user.department_id == 2 %}
+                        <!-- Sadece Müşteri İlişkileri departman yöneticilerine özel Teşekkür Ekle linki -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('thank_you.create_thank_you') }}">
+                                <i class="fas fa-heart"></i> Teşekkür Ekle
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% if current_user.department_id %}
+                        <!-- Tüm departman üyelerine gösterilecek Bana Gelen Teşekkürler linki -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('thank_you.my_thank_you') }}">
+                                <i class="fas fa-thumbs-up"></i> Bana Gelen Teşekkürler
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% if current_user.role in [1, 2] or (current_user.role == 4 and current_user.department_id == 2) %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('thank_you.list_thank_you') }}">
+                                <i class="fas fa-list-alt"></i> Tüm Teşekkürler
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% if current_user.role in [1, 2] %}
+                        <li class="nav-header mt-3 mb-2 text-muted ms-3">Yönetim</li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.users') }}">
+                                <i class="fas fa-users"></i> Kullanıcılar
+                            </a>
+                        </li>
+                        
+                        {% if current_user.role == 1 %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.email_settings') }}">
+                                <i class="fas fa-envelope"></i> E-Posta Ayarları
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% if current_user.role in [1, 2] %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.email_tracking') }}">
+                                <i class="fas fa-envelope-open-text"></i> E-Posta Takip
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.departments') }}">
+                                <i class="fas fa-building"></i> Departmanlar
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.workflow') }}">
+                                <i class="fas fa-project-diagram"></i> İş Akışı
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.reports') }}">
+                                <i class="fas fa-chart-bar"></i> Raporlar
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.logs') }}">
+                                <i class="fas fa-history"></i> Sistem Logları
+                            </a>
+                        </li>
+                        {% if current_user.role == 1 %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.email_scheduler') }}">
+                                <i class="fas fa-clock"></i> E-posta Zamanlayıcısı
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div id="content" class="col-12 col-lg-10 ms-auto px-4 py-4">
+                <div id="alert-container">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Kapat"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                </div>
+                
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Giriş Yapmamış Kullanıcı İçeriği -->
+    <div class="container">
+        <div id="alert-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Kapat"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        {% block auth_content %}{% endblock %}
+    </div>
+    {% endif %}
+    
+    <!-- JavaScript -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.4.1/js/dataTables.responsive.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/forms.js') }}"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+            const sidebar = document.getElementById('sidebar');
+            
+            if (sidebarToggleBtn && sidebar) {
+                function setupMobileSidebar() {
+                    if (window.innerWidth < 992) {
+                        sidebar.style.display = 'none';
+                        sidebar.style.position = 'fixed';
+                        sidebar.style.top = '56px';
+                        sidebar.style.left = '0';
+                        sidebar.style.width = '80%';
+                        sidebar.style.maxWidth = '300px';
+                        sidebar.style.bottom = '0';
+                        sidebar.style.zIndex = '1030';
+                        sidebar.style.overflowY = 'auto';
+                        sidebar.style.backgroundColor = 'white';
+                        sidebar.style.padding = '15px';
+                        sidebar.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
+                    } else {
+                        sidebar.style = '';
+                        sidebar.style.display = 'block';
+                    }
+                }
+                
+                setupMobileSidebar();
+                
+                sidebarToggleBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    if (window.innerWidth < 992) {
+                        if (sidebar.style.display === 'none') {
+                            sidebar.style.display = 'block';
+                        } else {
+                            sidebar.style.display = 'none';
+                        }
+                    }
+                });
+                
+                document.body.addEventListener('click', function(e) {
+                    if (window.innerWidth < 992 && sidebar.style.display === 'block') {
+                        if (!sidebar.contains(e.target) && e.target !== sidebarToggleBtn) {
+                            sidebar.style.display = 'none';
+                        }
+                    }
+                });
+                
+                window.addEventListener('resize', setupMobileSidebar);
+            }
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+    
+    <!-- Geri Bildirim Formu JavaScript -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const feedbackForm = document.getElementById('feedbackForm');
+        const sendFeedbackBtn = document.getElementById('sendFeedbackBtn');
+        
+        if (feedbackForm && sendFeedbackBtn) {
+            sendFeedbackBtn.addEventListener('click', function() {
+                // Form doğrulama
+                if (!feedbackForm.checkValidity()) {
+                    feedbackForm.reportValidity();
+                    return false;
+                }
+                
+                // Form verilerini al
+                const formData = new FormData(feedbackForm);
+                
+                // Ekran görüntüsü dosyasını ekle
+                const screenshotInput = document.getElementById('feedbackScreenshot');
+                if (screenshotInput && screenshotInput.files.length > 0) {
+                    formData.append('screenshot', screenshotInput.files[0]);
+                }
+                
+                // Gönderim esnasında butonun durumunu güncelle
+                sendFeedbackBtn.disabled = true;
+                sendFeedbackBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gönderiliyor...';
+                
+                // Gönderi işlemini başlat
+                try {
+                    // Normal form submit yap
+                    feedbackForm.submit();
+                    
+                    // Gönderim başarılı mesajı göster
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('feedbackModal'));
+                    modal.hide();
+                } catch (error) {
+                    console.error('Hata:', error);
+                    alert('Geri bildirim gönderilirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
+                    sendFeedbackBtn.disabled = false;
+                    sendFeedbackBtn.innerHTML = 'Gönder';
+                }
+            });
+            
+            // Modal kapandığında formu sıfırla
+            document.getElementById('feedbackModal').addEventListener('hidden.bs.modal', function () {
+                feedbackForm.reset();
+            });
+        }
+    });
+    </script>
+    
+    <!-- Geri Bildirim Modal -->
+    <div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="feedbackModalLabel">Hata Bildir / Öneri Gönder</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="feedbackForm" action="{{ url_for('feedback.submit_feedback') }}" method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="feedback_type" class="form-label">Bildirim Türü</label>
+                            <select class="form-select" id="feedback_type" name="feedback_type">
+                                <option value="bug" selected>Hata Bildirimi</option>
+                                <option value="suggestion">Geliştirme Önerisi</option>
+                                <option value="question">Soru</option>
+                                <option value="other">Diğer</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="subject" class="form-label">Konu</label>
+                            <input type="text" class="form-control" id="subject" name="subject" value="Geri Bildirim" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="message" class="form-label">Mesajınız</label>
+                            <textarea class="form-control" id="message" name="message" rows="5" required>Geri bildirim mesajı</textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                    <button type="button" class="btn btn-primary" id="sendFeedbackBtn">Gönder</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer Bölümü -->
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">&copy; 2025 DÖF Yönetim Sistemi | Geliştiren: <strong>Plus Kitchen Bilgi Teknolojileri</strong></span>
+        </div>
+    </footer>
+</body>
+</html>

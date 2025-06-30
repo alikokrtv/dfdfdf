@@ -1,0 +1,112 @@
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Başlık</th>
+            <th>Departman</th>
+            <th>Durum</th>
+            <th>İşlemler</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% if dofs.items %}
+            {% for dof in dofs.items %}
+            <tr>
+                <td>{{ dof.id }}</td>
+                <td>{{ dof.title }}</td>
+                <td>
+                    {% if dof.department %}
+                        {{ dof.department.name }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if dof.status == status.DRAFT %}
+                        <span class="badge bg-warning">Taslak</span>
+                    {% elif dof.status == status.SUBMITTED %}
+                        <span class="badge bg-info">Gönderildi</span>
+                    {% elif dof.status == status.IN_REVIEW %}
+                        <span class="badge bg-primary">İncelemede</span>
+                    {% elif dof.status == status.ASSIGNED %}
+                        <span class="badge bg-secondary">Atandı</span>
+                    {% elif dof.status == status.IN_PROGRESS %}
+                        <span class="badge bg-warning">Devam Ediyor</span>
+                    {% elif dof.status == status.RESOLVED %}
+                        <span class="badge bg-success">Çözüldü</span>
+                    {% elif dof.status == status.CLOSED %}
+                        <span class="badge bg-dark">Kapatıldı</span>
+                    {% elif dof.status == status.REJECTED %}
+                        <span class="badge bg-danger">Reddedildi</span>
+                    {% elif dof.status == status.PLANNING %}
+                        <span class="badge bg-info">Aksiyon Planı İncelemede</span>
+                    {% elif dof.status == status.IMPLEMENTATION %}
+                        <span class="badge bg-primary">Uygulama Aşamasında</span>
+                    {% elif dof.status == status.COMPLETED %}
+                        <span class="badge bg-success">Aksiyonlar Tamamlandı</span>
+                    {% elif dof.status == status.SOURCE_REVIEW %}
+                        <span class="badge bg-secondary">Kaynak Değerlendirmesinde</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ status.get_label(dof.status) }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        {% else %}
+            <tr>
+                <td colspan="5" class="text-center">Görüntülenecek DÖF bulunmamaktadır</td>
+            </tr>
+        {% endif %}
+    </tbody>
+</table>
+
+<!-- Sayfalama için JavaScript kaldırıldı -->
+
+{% if dofs.items and dofs.pages > 1 %}
+<nav aria-label="DÖF Listesi Sayfaları" class="d-flex justify-content-center mt-3">
+    <ul class="pagination">
+        {% if dofs.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('dof.list_dofs', page=dofs.prev_num, ajax=request.args.get('ajax', 0), department=request.args.get('department', 0), created_dept=request.args.get('created_dept', 0), status=request.args.get('status', 0)) }}">Önceki</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <a class="page-link" href="#">Önceki</a>
+        </li>
+        {% endif %}
+        
+        {% for page_num in dofs.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1) %}
+            {% if page_num %}
+                {% if page_num == dofs.page %}
+                <li class="page-item active">
+                    <a class="page-link" href="#">{{ page_num }}</a>
+                </li>
+                {% else %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('dof.list_dofs', page=page_num, ajax=request.args.get('ajax', 0), department=request.args.get('department', 0), created_dept=request.args.get('created_dept', 0), status=request.args.get('status', 0)) }}">{{ page_num }}</a>
+                </li>
+                {% endif %}
+            {% else %}
+                <li class="page-item disabled">
+                    <a class="page-link" href="#">…</a>
+                </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if dofs.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('dof.list_dofs', page=dofs.next_num, ajax=request.args.get('ajax', 0), department=request.args.get('department', 0), created_dept=request.args.get('created_dept', 0), status=request.args.get('status', 0)) }}">Sonraki</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <a class="page-link" href="#">Sonraki</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

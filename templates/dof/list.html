@@ -1,0 +1,238 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Listesi - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">DÖF Listesi</h1>
+    <a href="{{ url_for('dof.create_dof') }}" class="btn btn-primary">
+        <i class="fas fa-plus-circle me-1"></i> Yeni DÖF Oluştur
+    </a>
+</div>
+
+<!-- Filtre Kartı -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i> Filtreler
+            </h5>
+            <div>
+                <a href="{{ url_for('dof.export_dofs_excel', **request.args) }}" class="btn btn-success btn-sm me-2">
+                    <i class="fas fa-file-excel me-1"></i> Excel İndir
+                </a>
+                <a href="{{ url_for('dof.export_dofs_pdf', **request.args) }}" class="btn btn-danger btn-sm">
+                    <i class="fas fa-file-pdf me-1"></i> PDF İndir
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('dof.list_dofs') }}" id="filter-form" class="search-form">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.keyword.id }}" class="form-label">{{ form.keyword.label }}</label>
+                    {{ form.keyword(class="form-control", placeholder="Anahtar kelime", value=request.args.get('keyword', '')) }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.status.id }}" class="form-label">{{ form.status.label }}</label>
+                    <select class="form-control" id="{{ form.status.id }}" name="status">
+                        {% for value, label in form.status.choices %}
+                        <option value="{{ value }}" {% if request.args.get('status', '0') == value|string %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.department.id }}" class="form-label">{{ form.department.label }}</label>
+                    <select class="form-control" id="{{ form.department.id }}" name="department">
+                        {% for value, label in form.department.choices %}
+                        <option value="{{ value }}" {% if request.args.get('department', '0') == value|string %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="sort_by" class="form-label">Sıralama</label>
+                    <select class="form-control" id="sort_by" name="sort_by">
+                        <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Oluşturulma Tarihi</option>
+                        <option value="updated_at" {% if sort_by == 'updated_at' %}selected{% endif %}>Güncellenme Tarihi</option>
+                        <option value="title" {% if sort_by == 'title' %}selected{% endif %}>Başlık</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.date_from.id }}" class="form-label">{{ form.date_from.label }}</label>
+                    {{ form.date_from(class="form-control", type="date", value=request.args.get('date_from', '')) }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.date_to.id }}" class="form-label">{{ form.date_to.label }}</label>
+                    {{ form.date_to(class="form-control", type="date", value=request.args.get('date_to', '')) }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="sort_dir" class="form-label">Sıralama Yönü</label>
+                    <select class="form-control" id="sort_dir" name="sort_dir">
+                        <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>Azalan</option>
+                        <option value="asc" {% if sort_dir == 'asc' %}selected{% endif %}>Artan</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end mb-3">
+                    <button type="submit" class="btn btn-primary me-2 w-50">
+                        <i class="fas fa-search me-1"></i> Ara
+                    </button>
+                    <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-secondary w-50">
+                        <i class="fas fa-redo me-1"></i> Sıfırla
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- DÖF Listesi -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Başlık</th>
+                        <th>Durum</th>
+                        <th>Tip</th>
+                        <th>Öncelik</th>
+                        <th>Departman</th>
+                        <th>Oluşturan</th>
+                        <th>Oluşturulma</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if dofs %}
+                        {% for dof in dofs %}
+                        <tr>
+                            <td>{{ dof.id }}</td>
+                            <td>
+                                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="text-decoration-none">
+                                    {{ dof.title }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if dof.status == 0 %}
+                                    <span class="badge bg-secondary">Taslak</span>
+                                {% elif dof.status == 1 %}
+                                    <span class="badge bg-info">Gönderildi</span>
+                                {% elif dof.status == 2 %}
+                                    <span class="badge bg-primary">İncelemede</span>
+                                {% elif dof.status == 3 %}
+                                    <span class="badge bg-info">Atandı</span>
+                                {% elif dof.status == 4 %}
+                                    <span class="badge bg-warning">Devam Ediyor</span>
+                                {% elif dof.status == 5 %}
+                                    <span class="badge bg-success">Çözüldü</span>
+                                {% elif dof.status == 6 %}
+                                    <span class="badge bg-dark">Kapatıldı</span>
+                                {% elif dof.status == 7 %}
+                                    <span class="badge bg-danger">Reddedildi</span>
+                                {% elif dof.status == 8 %}
+                                    <span class="badge bg-warning">Aksiyon Planı İncelemede</span>
+                                {% elif dof.status == 9 %}
+                                    <span class="badge bg-info">Uygulama Aşamasında</span>
+                                {% elif dof.status == 10 %}
+                                    <span class="badge bg-success">Aksiyonlar Tamamlandı</span>
+                                {% elif dof.status == 11 %}
+                                    <span class="badge bg-info">Kaynak Değerlendirmesinde</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Bilinmeyen Durum</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ dof.type_name }}</td>
+                            <td>
+                                {% if dof.priority == 1 %}
+                                    <span class="priority-low"><i class="fas fa-arrow-down"></i> Düşük</span>
+                                {% elif dof.priority == 2 %}
+                                    <span class="priority-medium"><i class="fas fa-minus"></i> Orta</span>
+                                {% elif dof.priority == 3 %}
+                                    <span class="priority-high"><i class="fas fa-arrow-up"></i> Yüksek</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if dof.department %}
+                                    {{ dof.department.name }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ dof.creator.first_name }} {{ dof.creator.last_name }}</td>
+                            <td>{{ dof.created_at.strftime('%d.%m.%Y') }}</td>
+                            <td>
+                                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Görüntüle">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                {% if current_user.id == dof.created_by or current_user.role in [1, 2] %}
+                                <a href="{{ url_for('dof.edit_dof', dof_id=dof.id) }}" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Düzenle">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center">Kayıt bulunamadı</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Sayfalama -->
+        {% if dofs.pages > 1 %}
+        {% set request_args = request.args.copy() %}
+        {% if request_args.pop('page', None) %}{% endif %}
+        <nav aria-label="Sayfalama">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if dofs.page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('dof.list_dofs', page=dofs.prev_num, **request_args) }}" aria-label="Önceki">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                
+                {% for page_num in dofs.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == dofs.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('dof.list_dofs', page=page_num, **request_args) }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">...</a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <li class="page-item {% if dofs.page == dofs.pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('dof.list_dofs', page=dofs.next_num, **request_args) }}" aria-label="Sonraki">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Tooltips
+        $('[data-bs-toggle="tooltip"]').tooltip();
+        
+        // Select2 initalize
+        $('.select2').select2({
+            theme: 'bootstrap4',
+            language: 'tr',
+            width: '100%'
+        });
+    });
+</script>
+{% endblock %}

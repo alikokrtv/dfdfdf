@@ -1,0 +1,32 @@
+<!-- Müşteri şikayeti alanları -->
+<div id="customer_complaint_fields" class="row mb-3" style="display: none;">
+    <div class="col-md-6">
+        <label for="{{ form.channel.id }}" class="form-label required-field">{{ form.channel.label }}</label>
+        {{ form.channel(class="form-control select2", id="complaint_channel") }}
+        <div class="invalid-feedback">
+            Şikayet/Talep kanalı seçimi gereklidir
+        </div>
+        {% if form.channel.errors %}
+            <div class="text-danger">
+                {% for error in form.channel.errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-md-6">
+        <label for="{{ form.complaint_date.id }}" class="form-label required-field">{{ form.complaint_date.label }}</label>
+        {{ form.complaint_date(class="form-control", type="date", id="complaint_date") }}
+        <div class="invalid-feedback">
+            Şikayet/Talep tarihi gereklidir
+        </div>
+        {% if form.complaint_date.errors %}
+            <div class="text-danger">
+                {% for error in form.complaint_date.errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>

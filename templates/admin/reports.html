@@ -1,0 +1,321 @@
+{% extends "layout.html" %}
+
+{% block title %}Raporlar - DÖF Yönetim Sistemi{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style type="text/css" media="print">
+    .sidebar, .navbar, footer, .btn, form, .dropdown-menu {
+        display: none !important;
+    }
+    .content-wrapper {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+    .card {
+        page-break-inside: avoid;
+        margin-bottom: 15px;
+    }
+    canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+</style>
+
+<style>
+    .table-hover tbody tr:hover {
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+    .table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    .btn-export {
+        transition: all 0.3s;
+    }
+    .btn-export:hover {
+        transform: translateY(-2px);
+    }
+    .badge {
+        font-weight: 500;
+        padding: 0.4em 0.8em;
+    }
+    .card-header h5 {
+        margin-bottom: 0;
+        font-weight: 600;
+    }
+    .table-responsive {
+        overflow-x: auto;
+    }
+    #departmentTable .badge.rounded-pill {
+        min-width: 40px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4">Raporlar</h1>
+
+    <div class="btn-group my-3">
+        <button id="showGeneralStats" class="btn btn-outline-primary active">Genel</button>
+        <button id="showAssignedStats" class="btn btn-outline-primary">Atanan</button>
+        <button id="showCreatedStats" class="btn btn-outline-primary">Oluşturan</button>
+        <button id="showDetailedStats" class="btn btn-outline-primary">Detaylı</button>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5>DÖF İstatistikleri</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card text-white bg-primary">
+                                <div class="card-body text-center">
+                                    <h5 class="mb-0">{{ dof_counts|map(attribute=1)|sum }}</h5>
+                                    <p class="mb-0">Toplam DÖF</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card text-white bg-success">
+                                <div class="card-body text-center">
+                                    <h5 class="mb-0">{{ todays_count }}</h5>
+                                    <p class="mb-0">Bugün Açılan</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card text-white bg-danger">
+                                <div class="card-body text-center">
+                                    <h5 class="mb-0">{{ corrective_count }}</h5>
+                                    <p class="mb-0">Düzeltici Faaliyet</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card text-white bg-info">
+                                <div class="card-body text-center">
+                                    <h5 class="mb-0">{{ preventive_count }}</h5>
+                                    <p class="mb-0">Önleyici Faaliyet</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-3">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5>Durumlara Göre DÖF'ler</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover" id="statusTable">
+                        <thead>
+                            <tr>
+                                <th>Durum</th>
+                                <th class="text-end">Sayı</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for status, count in dof_counts %}
+                            <tr data-status="{{ status }}">
+                                <td>
+                                    <span class="badge rounded-pill {% if status == 1 %}bg-warning{% elif status == 2 %}bg-info{% elif status == 3 %}bg-primary{% elif status == 4 %}bg-secondary{% elif status == 5 %}bg-success{% elif status == 6 %}bg-dark{% elif status == 7 %}bg-danger{% else %}bg-secondary{% endif %}">
+                                        {% if status == 1 %}İnceleme Bekliyor
+                                        {% elif status == 2 %}İnceleniyor
+                                        {% elif status == 3 %}Departman Atandı
+                                        {% elif status == 4 %}Çözüm Bekliyor
+                                        {% elif status == 5 %}Çözüldü
+                                        {% elif status == 6 %}Kapatıldı
+                                        {% elif status == 7 %}Reddedildi
+                                        {% else %}Bilinmiyor{% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">{{ count }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="generalStatsPanel" class="stats-panel card mb-4">
+        <div class="card-header bg-light">
+            <h5>Aylık DÖF Dağılımı</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="monthlyChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <div id="assignedStatsPanel" class="stats-panel card mb-4" style="display:none;">
+        <div class="card-header bg-light">
+            <h5>Departman DÖF Dağılımı</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover" id="departmentTable">
+                <thead>
+                    <tr>
+                        <th>Departman</th>
+                        <th class="text-end">Açık DÖF</th>
+                        <th class="text-end">Kapalı DÖF</th>
+                        <th class="text-end">Toplam</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dept in department_stats %}
+                    <tr data-department="{{ dept.department_id }}">
+                        <td>{{ dept.name }}</td>
+                        <td class="text-end">
+                            <span class="badge rounded-pill bg-primary">{{ dept.open_dofs }}</span>
+                        </td>
+                        <td class="text-end">
+                            <span class="badge rounded-pill bg-success">{{ dept.closed_dofs }}</span>
+                        </td>
+                        <td class="text-end">
+                            <span class="badge rounded-pill bg-dark">{{ dept.total_dofs }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="createdStatsPanel" class="stats-panel card mb-4" style="display:none;">
+        <div class="card-header bg-light">
+            <h5>En Aktif Kullanıcılar</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Kullanıcı</th>
+                        <th class="text-end">Aktivite Sayısı</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user, action_count in active_users %}
+                    <tr>
+                        <td>{{ user }}</td>
+                        <td class="text-end">
+                            <span class="badge rounded-pill bg-primary">{{ action_count }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="detailedStatsPanel" class="stats-panel card mb-4" style="display:none;">
+        <div class="card-header bg-light">
+            <h5>Detaylı İstatistikler</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Haftalık DÖF'ler</div>
+                        <div class="card-body text-center">
+                            <h3>{{ weekly_count }}</h3>
+                            <p class="text-muted">Son 7 günde açılan DÖF</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Ortalama Çözüm Süresi</div>
+                        <div class="card-body text-center">
+                            <h3>{{ avg_resolution_time|round(1) }} gün</h3>
+                            <p class="text-muted">DÖF açılmasından çözüme kadar</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Acil DÖF'ler</div>
+                        <div class="card-body text-center">
+                            <h3>{{ high_priority_count }}</h3>
+                            <p class="text-muted">Son tarihi yaklaşan DÖF'ler</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Geciken DÖF'ler</div>
+                        <div class="card-body text-center">
+                            <h3>{{ overdue_count }}</h3>
+                            <p class="text-muted">Son tarihi geçmiş açık DÖF'ler</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    const buttons = {
+        general: $('#showGeneralStats'),
+        assigned: $('#showAssignedStats'),
+        created: $('#showCreatedStats'),
+        detailed: $('#showDetailedStats')
+    };
+
+    function showPanel(panelId, clickedBtn) {
+        $('.stats-panel').hide();
+        $('#' + panelId).show();
+        Object.values(buttons).forEach(btn => btn.removeClass('active'));
+        clickedBtn.addClass('active');
+    }
+
+    buttons.general.click(() => showPanel('generalStatsPanel', buttons.general));
+    buttons.assigned.click(() => showPanel('assignedStatsPanel', buttons.assigned));
+    buttons.created.click(() => showPanel('createdStatsPanel', buttons.created));
+    buttons.detailed.click(() => showPanel('detailedStatsPanel', buttons.detailed));
+
+    $('#applyFilter').click(function() {
+        const status = $('#statusFilter').val();
+        const department = $('#departmentFilter').val();
+        const date = $('#dateFilter').val();
+
+        $('#statusTable tbody tr').each(function() {
+            const matchStatus = status === 'all' || $(this).data('status').toString() === status;
+            $(this).toggle(matchStatus);
+        });
+
+        $('#departmentTable tbody tr').each(function() {
+            const matchDept = department === 'all' || $(this).data('department') === department;
+            $(this).toggle(matchDept);
+        });
+    });
+
+    $('#resetFilter').click(function() {
+        $('#statusFilter').val('all');
+        $('#departmentFilter').val('all');
+        $('#dateFilter').val('all');
+        $('#statusTable tbody tr, #departmentTable tbody tr').show();
+    });
+});
+</script>
+{% endblock %}

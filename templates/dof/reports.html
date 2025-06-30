@@ -1,0 +1,773 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Raporlarım - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">
+            {% if current_user.role in [1, 2] %}
+                Sistem DÖF Raporları
+            {% else %}
+                DÖF Raporlarım
+            {% endif %}
+        </h1>
+        <div>
+            <a href="{{ url_for('dof.export_reports_excel', **request.args) }}" class="btn btn-success me-2">
+                <i class="fas fa-file-excel me-1"></i> Excel İndir
+            </a>
+            <a href="{{ url_for('dof.export_reports_pdf', **request.args) }}" class="btn btn-danger me-2">
+                <i class="fas fa-file-pdf me-1"></i> PDF İndir
+            </a>
+            <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-outline-primary me-2">
+                <i class="fas fa-list me-1"></i> DÖF Listesi
+            </a>
+            <a href="{{ url_for('dof.create_dof') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i> Yeni DÖF
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtreler (Kalite Yöneticisi için) -->
+    {% if current_user.role in [1, 2] %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filtreler
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" id="filterForm">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="department_filter" class="form-label">Departman</label>
+                        <select class="form-select" id="department_filter" name="department_id">
+                            <option value="">Tüm Departmanlar</option>
+                            <!-- Departmanlar dinamik olarak yüklenecek -->
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="month_filter" class="form-label">Ay</label>
+                        <select class="form-select" id="month_filter" name="month">
+                            <option value="">Tüm Aylar</option>
+                            <option value="2025-01">Ocak 2025</option>
+                            <option value="2024-12">Aralık 2024</option>
+                            <option value="2024-11">Kasım 2024</option>
+                            <option value="2024-10">Ekim 2024</option>
+                            <option value="2024-09">Eylül 2024</option>
+                            <option value="2024-08">Ağustos 2024</option>
+                            <option value="2024-07">Temmuz 2024</option>
+                            <option value="2024-06">Haziran 2024</option>
+                            <option value="2024-05">Mayıs 2024</option>
+                            <option value="2024-04">Nisan 2024</option>
+                            <option value="2024-03">Mart 2024</option>
+                            <option value="2024-02">Şubat 2024</option>
+                            <option value="2024-01">Ocak 2024</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="status_filter" class="form-label">DÖF Durumu</label>
+                        <select class="form-select" id="status_filter" name="status">
+                            <option value="">Tüm Durumlar</option>
+                            <option value="0">Taslak</option>
+                            <option value="1">Gönderildi</option>
+                            <option value="2">İnceleniyor</option>
+                            <option value="3">Atandı</option>
+                            <option value="4">Devam Ediyor</option>
+                            <option value="5">Çözüldü</option>
+                            <option value="6">Kapatıldı</option>
+                            <option value="7">Reddedildi</option>
+                            <option value="8">Planlama</option>
+                            <option value="9">Uygulama</option>
+                            <option value="10">Tamamlandı</option>
+                            <option value="11">Kaynak İnceliyor</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-1"></i>Filtrele
+                        </button>
+                        <a href="{{ url_for('dof.reports') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-1"></i>Temizle
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Genel İstatistikler -->
+    <div class="row mb-4">
+        {% if current_user.role in [1, 2] %}
+        <!-- Kalite Yöneticisi ve Admin için sistem geneli istatistikler -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-primary mb-2">{{ stats.total_dofs }}</div>
+                    <h6 class="card-title">Toplam DÖF</h6>
+                    <small class="text-muted">Sistem Geneli</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-info mb-2">{{ stats.this_month }}</div>
+                    <h6 class="card-title">Bu Ay</h6>
+                    <small class="text-muted">Oluşturulan</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-warning mb-2">{{ stats.this_week }}</div>
+                    <h6 class="card-title">Bu Hafta</h6>
+                    <small class="text-muted">Oluşturulan</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-success mb-2">{{ stats.today }}</div>
+                    <h6 class="card-title">Bugün</h6>
+                    <small class="text-muted">Oluşturulan</small>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Diğer kullanıcılar için kişisel istatistikler -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-primary mb-2">{{ stats.created_total }}</div>
+                    <h6 class="card-title">Oluşturduğum DÖF'ler</h6>
+                    <small class="text-muted">Toplam</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-success mb-2">{{ stats.created_closed }}</div>
+                    <h6 class="card-title">Kapatılan DÖF'ler</h6>
+                    <small class="text-muted">Tamamlanan</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-warning mb-2">{{ stats.created_active }}</div>
+                    <h6 class="card-title">Aktif DÖF'ler</h6>
+                    <small class="text-muted">Devam Eden</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-info mb-2">{{ stats.assigned_total }}</div>
+                    <h6 class="card-title">Atanan DÖF'ler</h6>
+                    <small class="text-muted">Bana Atanan</small>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Departman Yöneticisi İçin Ek İstatistikler -->
+    {% if current_user.role == 4 and current_user.department_id %}
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-purple mb-2">{{ stats.dept_total }}</div>
+                    <h6 class="card-title">Departmanıma Atanan</h6>
+                    <small class="text-muted">Toplam</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-success mb-2">{{ stats.dept_closed }}</div>
+                    <h6 class="card-title">Dept. Kapatılan</h6>
+                    <small class="text-muted">Tamamlanan</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-6 text-warning mb-2">{{ stats.dept_active }}</div>
+                    <h6 class="card-title">Dept. Aktif</h6>
+                    <small class="text-muted">Devam Eden</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Grafik Alanları -->
+    <div class="row mb-4">
+        <!-- Aylık Trend -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Aylık DÖF Trendi</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="monthlyChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Durum Dağılımı -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Durum Dağılımı</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="statusChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DÖF Tipi ve Kaynak Dağılımı -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Tipi Dağılımı</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="typeChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Kaynağı Dağılımı</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="sourceChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminler ve Son Aktiviteler -->
+    <div class="row">
+        <!-- Yaklaşan Terminler -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0 text-warning">
+                        <i class="fas fa-clock me-1"></i> Yaklaşan Terminler
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if upcoming_deadlines %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>DÖF</th>
+                                        <th>Başlık</th>
+                                        <th>Termin</th>
+                                        <th>Durum</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dof in upcoming_deadlines %}
+                                    <tr>
+                                        <td><a href="{{ url_for('dof.detail', dof_id=dof.id) }}">#{{ dof.id }}</a></td>
+                                        <td>{{ dof.title[:20] }}...</td>
+                                        <td class="text-warning">
+                                            <small>{{ dof.deadline.strftime('%d.%m.%Y') }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-primary">
+                                                {% if dof.status == DOFStatus.DRAFT %}Taslak
+                                                {% elif dof.status == DOFStatus.SUBMITTED %}Gönderildi
+                                                {% elif dof.status == DOFStatus.IN_REVIEW %}İnceleniyor
+                                                {% elif dof.status == DOFStatus.ASSIGNED %}Atandı
+                                                {% elif dof.status == DOFStatus.IN_PROGRESS %}Devam Ediyor
+                                                {% elif dof.status == DOFStatus.REJECTED %}Reddedildi
+                                                {% elif dof.status == DOFStatus.CLOSED %}Kapatıldı
+                                                {% elif dof.status == DOFStatus.RESOLVED %}Çözüldü
+                                                {% elif dof.status == DOFStatus.PLANNING %}Planlama
+                                                {% elif dof.status == DOFStatus.IMPLEMENTATION %}Uygulama
+                                                {% elif dof.status == DOFStatus.COMPLETED %}Tamamlandı
+                                                {% elif dof.status == DOFStatus.SOURCE_REVIEW %}Kaynak İnceliyor
+                                                {% else %}{{ dof.status }}
+                                                {% endif %}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-1"></i> Yaklaşan termin bulunmuyor.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Geçmiş Terminler -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0 text-danger">
+                        <i class="fas fa-exclamation-triangle me-1"></i> Geçmiş Terminler
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if overdue_dofs %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>DÖF</th>
+                                        <th>Başlık</th>
+                                        <th>Termin</th>
+                                        <th>Durum</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dof in overdue_dofs %}
+                                    <tr>
+                                        <td><a href="{{ url_for('dof.detail', dof_id=dof.id) }}">#{{ dof.id }}</a></td>
+                                        <td>{{ dof.title[:20] }}...</td>
+                                        <td class="text-danger">
+                                            <small>{{ dof.deadline.strftime('%d.%m.%Y') }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-danger">
+                                                {% if dof.status == DOFStatus.DRAFT %}Taslak
+                                                {% elif dof.status == DOFStatus.SUBMITTED %}Gönderildi
+                                                {% elif dof.status == DOFStatus.IN_REVIEW %}İnceleniyor
+                                                {% elif dof.status == DOFStatus.ASSIGNED %}Atandı
+                                                {% elif dof.status == DOFStatus.IN_PROGRESS %}Devam Ediyor
+                                                {% elif dof.status == DOFStatus.REJECTED %}Reddedildi
+                                                {% elif dof.status == DOFStatus.CLOSED %}Kapatıldı
+                                                {% elif dof.status == DOFStatus.RESOLVED %}Çözüldü
+                                                {% elif dof.status == DOFStatus.PLANNING %}Planlama
+                                                {% elif dof.status == DOFStatus.IMPLEMENTATION %}Uygulama
+                                                {% elif dof.status == DOFStatus.COMPLETED %}Tamamlandı
+                                                {% elif dof.status == DOFStatus.SOURCE_REVIEW %}Kaynak İnceliyor
+                                                {% else %}{{ dof.status }}
+                                                {% endif %}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success mb-0">
+                            <i class="fas fa-check-circle me-1"></i> Geçmiş termin bulunmuyor.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Son DÖF'ler -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-1"></i> 
+                        {% if current_user.role in [1, 2] %}
+                            Son Oluşturulan DÖF'ler
+                        {% else %}
+                            Son Oluşturduğum DÖF'ler
+                        {% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_created %}
+                        <div class="list-group list-group-flush">
+                            {% for dof in recent_created %}
+                            <div class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">
+                                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}">{{ dof.title[:30] }}...</a>
+                                        </div>
+                                        <small class="text-muted">{{ dof.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                    </div>
+                                    <span class="badge bg-primary rounded-pill">
+                                        {% if dof.status == DOFStatus.DRAFT %}Taslak
+                                        {% elif dof.status == DOFStatus.SUBMITTED %}Gönderildi
+                                        {% elif dof.status == DOFStatus.IN_REVIEW %}İnceleniyor
+                                        {% elif dof.status == DOFStatus.ASSIGNED %}Atandı
+                                        {% elif dof.status == DOFStatus.IN_PROGRESS %}Devam Ediyor
+                                        {% elif dof.status == DOFStatus.REJECTED %}Reddedildi
+                                        {% elif dof.status == DOFStatus.CLOSED %}Kapatıldı
+                                        {% elif dof.status == DOFStatus.RESOLVED %}Çözüldü
+                                        {% elif dof.status == DOFStatus.PLANNING %}Planlama
+                                        {% elif dof.status == DOFStatus.IMPLEMENTATION %}Uygulama
+                                        {% elif dof.status == DOFStatus.COMPLETED %}Tamamlandı
+                                        {% elif dof.status == DOFStatus.SOURCE_REVIEW %}Kaynak İnceliyor
+                                        {% else %}{{ dof.status }}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-1"></i> 
+                            {% if current_user.role in [1, 2] %}
+                                Henüz DÖF bulunmuyor.
+                            {% else %}
+                                Henüz DÖF oluşturmamışsınız.
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtrelenmiş DÖF Listesi -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list me-2"></i>
+                            {% if current_user.role in [1, 2] %}
+                                Filtrelenmiş DÖF Listesi
+                            {% else %}
+                                DÖF Listesi
+                            {% endif %}
+                            <span class="badge bg-primary ms-2">{{ stats.total_dofs }}</span>
+                        </h5>
+                        <div>
+                            <a href="{{ url_for('dof.list_dofs') }}{% if request.args %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-external-link-alt me-1"></i>Detaylı Liste
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if filtered_dofs %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 8%;">ID</th>
+                                        <th style="width: 35%;">Başlık</th>
+                                        <th style="width: 15%;">Oluşturan</th>
+                                        <th style="width: 15%;">Departman</th>
+                                        <th style="width: 12%;">Durum</th>
+                                        <th style="width: 10%;">Tarih</th>
+                                        <th style="width: 5%;">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dof in filtered_dofs[:20] %}
+                                    <tr>
+                                        <td>
+                                            <strong class="text-primary">#{{ dof.id }}</strong>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold">{{ dof.title }}</div>
+                                            {% if dof.description %}
+                                                <small class="text-muted">{{ dof.description[:50] }}{% if dof.description|length > 50 %}...{% endif %}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if dof.creator %}
+                                                {{ dof.creator.full_name }}
+                                                {% if dof.creator.department %}
+                                                    <br><small class="text-muted">{{ dof.creator.department.name }}</small>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">Bilinmiyor</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if dof.department %}
+                                                <span class="badge bg-light text-dark">{{ dof.department.name }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Atanmamış</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if dof.status == DOFStatus.DRAFT %}
+                                                <span class="badge bg-secondary">Taslak</span>
+                                            {% elif dof.status == DOFStatus.SUBMITTED %}
+                                                <span class="badge bg-info">Gönderildi</span>
+                                            {% elif dof.status == DOFStatus.IN_REVIEW %}
+                                                <span class="badge bg-warning">İnceleniyor</span>
+                                            {% elif dof.status == DOFStatus.ASSIGNED %}
+                                                <span class="badge bg-primary">Atandı</span>
+                                            {% elif dof.status == DOFStatus.IN_PROGRESS %}
+                                                <span class="badge bg-warning">Devam Ediyor</span>
+                                            {% elif dof.status == DOFStatus.RESOLVED %}
+                                                <span class="badge bg-success">Çözüldü</span>
+                                            {% elif dof.status == DOFStatus.CLOSED %}
+                                                <span class="badge bg-success">Kapatıldı</span>
+                                            {% elif dof.status == DOFStatus.REJECTED %}
+                                                <span class="badge bg-danger">Reddedildi</span>
+                                            {% elif dof.status == DOFStatus.PLANNING %}
+                                                <span class="badge bg-info">Planlama</span>
+                                            {% elif dof.status == DOFStatus.IMPLEMENTATION %}
+                                                <span class="badge bg-warning">Uygulama</span>
+                                            {% elif dof.status == DOFStatus.COMPLETED %}
+                                                <span class="badge bg-success">Tamamlandı</span>
+                                            {% elif dof.status == DOFStatus.SOURCE_REVIEW %}
+                                                <span class="badge bg-info">Kaynak İnceliyor</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ dof.status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {{ dof.created_at.strftime('%d.%m.%Y') if dof.created_at else '-' }}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" 
+                                               class="btn btn-outline-primary btn-sm" 
+                                               title="DÖF Detayı">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        {% if filtered_dofs|length > 20 %}
+                            <div class="alert alert-info mt-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                İlk 20 DÖF gösteriliyor. Tüm DÖF'leri görmek için 
+                                <a href="{{ url_for('dof.list_dofs', **request.args) }}" class="alert-link">Detaylı Liste</a> 
+                                sayfasını kullanın.
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-1"></i>
+                            {% if current_user.role in [1, 2] %}
+                                Seçilen filtrelere uygun DÖF bulunmuyor.
+                            {% else %}
+                                Henüz DÖF bulunmuyor.
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Departman listesini yükle (kalite yöneticisi için)
+    {% if current_user.role in [1, 2] %}
+    fetch('/api/departments')
+        .then(response => response.json())
+        .then(departments => {
+            const departmentSelect = document.getElementById('department_filter');
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name;
+                departmentSelect.appendChild(option);
+            });
+            
+            // URL parametrelerinden seçili değerleri ayarla
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('department_id')) {
+                departmentSelect.value = urlParams.get('department_id');
+            }
+            if (urlParams.get('month')) {
+                document.getElementById('month_filter').value = urlParams.get('month');
+            }
+            if (urlParams.get('status')) {
+                document.getElementById('status_filter').value = urlParams.get('status');
+            }
+        })
+        .catch(error => console.error('Departman yükleme hatası:', error));
+    {% endif %}
+
+    // DÖF durum isimleri
+    const statusNames = {
+        0: 'Taslak',
+        1: 'Gönderildi', 
+        2: 'İnceleniyor',
+        3: 'Atandı',
+        4: 'Devam Ediyor',
+        5: 'Çözüldü',
+        6: 'Kapatıldı',
+        7: 'Reddedildi',
+        8: 'Planlama',
+        9: 'Uygulama',
+        10: 'Tamamlandı',
+        11: 'Kaynak İnceliyor'
+    };
+
+    // DÖF tipi isimleri
+    const typeNames = {
+        1: 'Düzeltici',
+        2: 'Önleyici'
+    };
+
+    // DÖF kaynak isimleri  
+    const sourceNames = {
+        1: 'İç Tetkik',
+        2: 'Dış Tetkik',
+        3: 'Müşteri Şikayeti',
+        4: 'Personel Bildirimi',
+        5: 'Uygunsuzluk',
+        6: 'Diğer',
+        7: 'Dış Denetim',
+        8: 'Tedarikçi',
+        9: 'Proses/Süreç',
+        10: 'Yasal Gereksinim'
+    };
+
+    // Aylık trend grafiği
+    if (document.getElementById('monthlyChart')) {
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        const monthlyLabels = {{ monthly_data|map(attribute='month')|list|tojson|safe }};
+        const monthlyData = {{ monthly_data|map(attribute='count')|list|tojson|safe }};
+        
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: monthlyLabels,
+                datasets: [{
+                    label: 'Aylık DÖF Sayısı',
+                    data: monthlyData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Durum dağılımı grafiği
+    if (document.getElementById('statusChart')) {
+        const statusCtx = document.getElementById('statusChart').getContext('2d');
+        const statusChartData = {{ status_counts|list|tojson|safe }};
+        const statusLabels = statusChartData.map(item => statusNames[item[0]] || 'Bilinmeyen');
+        const statusData = statusChartData.map(item => item[1]);
+        
+        new Chart(statusCtx, {
+            type: 'doughnut',
+            data: {
+                labels: statusLabels,
+                datasets: [{
+                    data: statusData,
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#4BC0C0']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
+    // DÖF tipi grafiği
+    if (document.getElementById('typeChart')) {
+        const typeCtx = document.getElementById('typeChart').getContext('2d');
+        const typeChartData = {{ type_counts|list|tojson|safe }};
+        const typeLabels = typeChartData.map(item => typeNames[item[0]] || 'Bilinmeyen');
+        const typeData = typeChartData.map(item => item[1]);
+        
+        new Chart(typeCtx, {
+            type: 'bar',
+            data: {
+                labels: typeLabels,
+                datasets: [{
+                    label: 'DÖF Sayısı',
+                    data: typeData,
+                    backgroundColor: ['#007bff', '#28a745', '#ffc107', '#17a2b8']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // DÖF kaynağı grafiği
+    if (document.getElementById('sourceChart')) {
+        const sourceCtx = document.getElementById('sourceChart').getContext('2d');
+        const sourceChartData = {{ source_counts|list|tojson|safe }};
+        const sourceLabels = sourceChartData.map(item => sourceNames[item[0]] || 'Bilinmeyen');
+        const sourceData = sourceChartData.map(item => item[1]);
+        
+        new Chart(sourceCtx, {
+            type: 'pie',
+            data: {
+                labels: sourceLabels,
+                datasets: [{
+                    data: sourceData,
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.text-purple {
+    color: #6f42c1 !important;
+}
+</style>
+{% endblock %} 

@@ -1,0 +1,165 @@
+{% extends "layout.html" %}
+
+{% block title %}Kullanıcı Yönetimi - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">Kullanıcı Yönetimi</h1>
+    <div>
+        <form method="POST" action="{{ url_for('admin.update_department_roles') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-warning me-2">
+                <i class="fas fa-sync-alt me-1"></i> Departman Rollerini Güncelle
+            </button>
+        </form>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-primary">
+            <i class="fas fa-user-plus me-1"></i> Yeni Kullanıcı Ekle
+        </a>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover datatable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Kullanıcı Adı</th>
+                        <th>Ad Soyad</th>
+                        <th>E-posta</th>
+                        <th>Rol</th>
+                        <th>Departman</th>
+                        <th>Durum</th>
+                        <th>Son Giriş</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.first_name }} {{ user.last_name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.role == 1 %}
+                                <span class="badge bg-danger">Yönetici</span>
+                            {% elif user.role == 2 %}
+                                <span class="badge bg-primary">Kalite Yöneticisi</span>
+                            {% elif user.role == 3 %}
+                                <span class="badge bg-success">Bölge Müdürü</span>
+                            {% elif user.role == 4 %}
+                                <span class="badge bg-info">Departman Yöneticisi</span>
+                            {% elif user.role == 5 %}
+                                <span class="badge bg-secondary">Kullanıcı</span>
+                            {% elif user.role == 6 %}
+                                <span class="badge bg-warning text-dark">Direktör</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Tanımlanmamış Rol</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.department %}
+                                {{ user.department.name }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge bg-success">Aktif</span>
+                            {% else %}
+                                <span class="badge bg-danger">Pasif</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_login %}
+                                {{ user.last_login.strftime('%d.%m.%Y %H:%M') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Düzenle">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                
+                                {% if current_user.id != user.id %}
+                                <form method="POST" action="{{ url_for('admin.toggle_user_status', user_id=user.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-{{ 'danger' if user.is_active else 'success' }}" data-bs-toggle="tooltip" title="{{ 'Pasif Yap' if user.is_active else 'Aktif Yap' }}">
+                                        <i class="fas {{ 'fa-user-times' if user.is_active else 'fa-user-check' }}"></i>
+                                    </button>
+                                </form>
+                                
+                                <form method="POST" action="{{ url_for('admin.reset_user_password', user_id=user.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-warning" title="Şifre Sıfırla">
+                                        <i class="fas fa-key"></i>
+                                    </button>
+                                </form>
+                                
+                                <form method="POST" action="{{ url_for('admin.send_user_credentials', user_id=user.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-success" title="Şifre Bilgisi Gönder">
+                                        <i class="fas fa-envelope"></i>
+                                    </button>
+                                </form>
+
+                                {% if user.role != 1 %}
+                                <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" class="d-inline" onsubmit="return confirm('{{ user.first_name }} {{ user.last_name }} ({{ user.username }}) kullanıcısını silmek istediğinizden emin misiniz?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Kullanıcıyı Sil">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<!-- Silme Modalları -->
+{% for user in users %}
+{% if user.role != 1 %}
+<!-- Silme Onay Modalı -->
+<div class="modal fade" id="deleteUserModal{{ user.id }}" tabindex="-1" aria-labelledby="deleteUserModalLabel{{ user.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteUserModalLabel{{ user.id }}">Kullanıcı Silme Onayı</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>{{ user.first_name }} {{ user.last_name }} ({{ user.username }})</strong> kullanıcısını silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger"><i class="fas fa-exclamation-triangle"></i> Bu işlem geri alınamaz!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">Kullanıcıyı Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Tooltips aktivasyonu
+        $('[data-bs-toggle="tooltip"]').tooltip();
+    });
+</script>
+{% endblock %}

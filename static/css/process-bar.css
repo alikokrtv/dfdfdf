@@ -1,0 +1,139 @@
+/* DÖF Süreç Rehberi İyileştirilmiş Stiller */
+.progress-container {
+    width: 100%;
+    position: relative;
+    margin-bottom: 30px;
+}
+
+.progressbar {
+    counter-reset: step;
+    padding: 0;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px; /* Çizgi ve rakamların daha iyi görünmesi için üstten boşluk */
+    margin-bottom: 20px;
+}
+
+.progressbar li {
+    list-style-type: none;
+    width: calc(100% / 8);
+    position: relative;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #777;
+    z-index: 2;
+    transition: all 0.3s ease;
+    padding-top: 5px;
+}
+
+.progressbar li:before {
+    content: counter(step);
+    counter-increment: step;
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
+    display: block;
+    font-size: 16px;
+    text-align: center;
+    border-radius: 50%;
+    background-color: #ddd;
+    color: #777;
+    margin: 0 auto 10px auto;
+    position: relative;
+    z-index: 20; /* Çizgilerin üzerinde görünmesi için z-index daha da arttırıldı */
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.progressbar li:after {
+    content: '';
+    position: absolute;
+    width: calc(100% - 50px); /* Çizgiyi yuvarlakların arasında kısa tut */
+    height: 3px;
+    background-color: #ddd;
+    top: 18px; /* Çizgiyi yuvarlağın tam ortasından geçir */
+    left: calc(-50% + 25px); /* Çizgiyi yuvarlaktan sonra başlat */
+    z-index: 1; /* Çizgiyi yuvarlakların altında ama görünür tut */
+    transition: all 0.3s ease;
+}
+
+.progressbar li:first-child:after {
+    content: none;
+}
+
+.progressbar li.active {
+    color: #2196F3;
+    font-weight: 500;
+}
+
+.progressbar li.active:before {
+    background-color: #2196F3;
+    color: white;
+    box-shadow: 0 2px 10px rgba(33, 150, 243, 0.4);
+}
+
+.progressbar li.active:after {
+    background-color: #2196F3;
+}
+
+.progressbar li.current {
+    color: #4CAF50; /* Kırmızı yerine yeşil renk */
+    font-weight: bold;
+    transform: scale(1.1);
+}
+
+.progressbar li.current:before {
+    background-color: #4CAF50; /* Kırmızı yerine yeşil renk */
+    color: white;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 2px #4CAF50, 0 4px 10px rgba(76, 175, 80, 0.5);
+    transform: scale(1.2);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    }
+}
+
+/* Mevcut adım bilgisi için stil */
+.current-step-info {
+    border-left: 4px solid #e53935;
+    background-color: #ffebee;
+    padding: 15px !important;
+    border-radius: 0 4px 4px 0;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-top: 15px;
+}
+
+.current-step-info .fa-map-marker-alt {
+    color: #e53935;
+    font-size: 1.2rem;
+}
+
+.status-highlight {
+    background-color: #e53935;
+    color: white;
+    padding: 3px 10px;
+    border-radius: 50px;
+    display: inline-block;
+    margin-left: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    animation: glow 2s infinite alternate;
+}
+
+@keyframes glow {
+    from {
+        box-shadow: 0 0 5px rgba(229, 57, 53, 0.5);
+    }
+    to {
+        box-shadow: 0 0 10px rgba(229, 57, 53, 0.8);
+    }
+}

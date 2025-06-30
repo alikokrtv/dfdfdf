@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+
+{% block title %}Aksiyon Planı Değişiklik Talebi - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">Aksiyon Planı Değişiklik Talebi</h1>
+                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Geri Dön
+                </a>
+            </div>
+
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Bu işlemle departmandan aksiyon planında değişiklik yapmasını talep edeceksiniz. 
+                Lütfen nelerin değiştirilmesi gerektiğini açık bir şekilde belirtin.
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Bilgileri</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>DÖF Numarası:</strong> #{{ dof.id }}</p>
+                            <p><strong>Başlık:</strong> {{ dof.title }}</p>
+                            <p><strong>Oluşturan:</strong> {{ dof.creator.full_name }}</p>
+                            <p><strong>Departman:</strong> {{ dof.department.name if dof.department else 'Belirtilmemiş' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Oluşturma Tarihi:</strong> {{ dof.created_at.strftime('%d.%m.%Y') }}</p>
+                            <p><strong>Aksiyon Sınıfı:</strong> {{ dof.action_class.name if dof.action_class else 'Belirtilmemiş' }}</p>
+                            <p><strong>Son Tarih:</strong> {{ dof.due_date.strftime('%d.%m.%Y') if dof.due_date else 'Belirtilmemiş' }}</p>
+                            <p><strong>Durum:</strong> 
+                                {% if dof.status == 8 %}
+                                <span class="badge bg-warning">Aksiyon Planı İncelemede</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ dof.get_status_display() }}</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Mevcut Aksiyon Planı</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Kök Neden Analizi</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {{ dof.root_cause1|safe|nl2br if dof.root_cause1 else 'Girilmemiş' }}
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Aksiyon Planı</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {{ dof.action_plan|safe|nl2br if dof.action_plan else 'Girilmemiş' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Değişiklik Talebi</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('dof.request_plan_revision', dof_id=dof.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="mb-3">
+                            <label for="comment" class="form-label">Değişiklik Talep Nedeni ve Beklentiler</label>
+                            <textarea class="form-control" id="comment" name="comment" rows="6" required placeholder="Aksiyon planında değiştirilmesini istediğiniz noktaları ve beklentilerinizi detaylı bir şekilde açıklayın."></textarea>
+                            <div class="form-text">Bu açıklama departman yöneticisine yönlendirici bilgi olarak gönderilecektir. Değişiklik talebinde bulunurken neyi değiştirmek istediğinizi açıkça belirtmeniz önemlidir.</div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('dof.review_action_plan', dof_id=dof.id) }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-1"></i> İnceleme Sayfasına Dön
+                            </a>
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-paper-plane me-1"></i> Değişiklik Talebini Gönder
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

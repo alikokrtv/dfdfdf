@@ -1,0 +1,252 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Kapanış Değerlendirmesi - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">DÖF Çözüm Değerlendirmesi</h1>
+    <div>
+        <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Dön
+        </a>
+    </div>
+</div>
+
+<!-- DÖF Detay Kartı -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <span class="badge bg-primary me-2">#{{ dof.id }}</span> {{ dof.title }}
+            </h5>
+            <div>
+                <span class="badge bg-success">Çözüldü</span>
+                {% if dof.priority == 1 %}
+                    <span class="badge bg-success ms-1">Düşük Öncelik</span>
+                {% elif dof.priority == 2 %}
+                    <span class="badge bg-warning ms-1">Orta Öncelik</span>
+                {% elif dof.priority == 3 %}
+                    <span class="badge bg-danger ms-1">Yüksek Öncelik</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Açıklama -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h6 class="mb-2">Açıklama</h6>
+                <div class="bg-light p-3 rounded">
+                    {{ dof.description|nl2br|safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Kök Neden Analizi -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">Kök Neden Analizi</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if dof.root_cause1 %}
+                        <div class="mb-3">
+                            <label class="fw-bold">1. Kök Neden:</label>
+                            <div class="p-2 bg-light rounded">{{ dof.root_cause1|nl2br|safe }}</div>
+                        </div>
+                        {% endif %}
+                        {% if dof.root_cause2 %}
+                        <div class="mb-3">
+                            <label class="fw-bold">2. Kök Neden:</label>
+                            <div class="p-2 bg-light rounded">{{ dof.root_cause2|nl2br|safe }}</div>
+                        </div>
+                        {% endif %}
+                        {% if dof.root_cause3 %}
+                        <div class="mb-3">
+                            <label class="fw-bold">3. Kök Neden:</label>
+                            <div class="p-2 bg-light rounded">{{ dof.root_cause3|nl2br|safe }}</div>
+                        </div>
+                        {% endif %}
+                        {% if dof.root_cause4 %}
+                        <div class="mb-3">
+                            <label class="fw-bold">4. Kök Neden:</label>
+                            <div class="p-2 bg-light rounded">{{ dof.root_cause4|nl2br|safe }}</div>
+                        </div>
+                        {% endif %}
+                        {% if dof.root_cause5 %}
+                        <div class="mb-3">
+                            <label class="fw-bold">5. Kök Neden:</label>
+                            <div class="p-2 bg-light rounded">{{ dof.root_cause5|nl2br|safe }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aksiyon Planı -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">Aksiyon Planı</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="p-3 bg-light rounded">{{ dof.action_plan|nl2br|safe }}</div>
+                        </div>
+                        {% if dof.deadline %}
+                        <div class="mb-3">
+                            <label class="fw-bold">Termin Tarihi:</label>
+                            <span class="ms-2 badge bg-info">{{ dof.deadline.strftime('%d.%m.%Y') }}</span>
+                        </div>
+                        {% endif %}
+                        {% if dof.completion_date %}
+                        <div class="mb-3">
+                            <label class="fw-bold">Tamamlanma Tarihi:</label>
+                            <span class="ms-2 badge bg-success">{{ dof.completion_date.strftime('%d.%m.%Y') }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Değerlendirme Formu -->
+        <form method="POST" class="needs-validation" novalidate>
+            {{ form.csrf_token }}
+            
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Değerlendirme Kontrol Listesi</h6>
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="check1" name="check_cause">
+                        <label class="form-check-label" for="check1">
+                            Kök nedenler doğru şekilde analiz edilmiş mi?
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="check2" name="check_action">
+                        <label class="form-check-label" for="check2">
+                            Aksiyon planı kök nedenlere uygun çözümler içeriyor mu?
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="check3" name="check_completion">
+                        <label class="form-check-label" for="check3">
+                            Çözüm süresinde tamamlanmış mı?
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="check4" name="check_effectiveness">
+                        <label class="form-check-label" for="check4">
+                            Çözüm etkili mi, yeni sorunların oluşmasını engelliyor mu?
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group mb-4">
+                {{ form.comment.label(class="form-label") }} <span class="text-danger">*</span>
+                {{ form.comment(class="form-control" + (" is-invalid" if form.comment.errors else ""), rows=3, placeholder="DÖF ile ilgili değerlendirmenizi yazınız") }}
+                {% if form.comment.errors %}
+                    <div class="invalid-feedback">{{ form.comment.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="row mt-5">
+                <div class="col-md-8 mx-auto d-flex justify-content-center gap-5">
+                    <button type="submit" name="close" value="1" class="btn btn-success btn-lg px-5 py-3" id="approveBtn">
+                        <i class="fas fa-check-circle me-2"></i> Onayla ve Kapat
+                    </button>
+                    <button type="submit" name="new_dof" value="1" class="btn btn-warning btn-lg px-5 py-3" id="newDofBtn">
+                        <i class="fas fa-plus-circle me-2"></i> Yeni DÖF Açılsın
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        console.log("JavaScript yüklendi");
+        
+        // Form submit event'ini dinle
+        $('form').on('submit', function(e) {
+            console.log("Form submit event tetiklendi");
+            console.log("Form action:", this.action);
+            console.log("Form method:", this.method);
+            
+            // Form verilerini logla
+            var formData = new FormData(this);
+            for (var pair of formData.entries()) {
+                console.log(pair[0] + ': ' + pair[1]);
+            }
+        });
+        
+        // "Yeni DÖF Açılsın" butonuna tıklandığında
+        $('#newDofBtn').on('click', function(e) {
+            console.log("Yeni DÖF butonu tıklandı");
+            
+            // Sadece yorum alanını kontrol et
+            if (!$('[name="comment"]').val().trim()) {
+                alert('Lütfen bir değerlendirme yorumu yazınız.');
+                e.preventDefault();
+                return false;
+            }
+            
+            console.log("Yeni DÖF formu gönderiliyor...");
+            // Normal submit'e izin ver
+            return true;
+        });
+        
+        // "Onayla ve Kapat" butonuna tıklandığında
+        $('#approveBtn').on('click', function(e) {
+            console.log("Onayla ve Kapat butonu tıklandı");
+            
+            // Kontrol listesini kontrol et
+            var allChecked = true;
+            var checkedCount = 0;
+            $('.form-check-input').each(function() {
+                if ($(this).is(':checked')) {
+                    checkedCount++;
+                } else {
+                    allChecked = false;
+                }
+            });
+            
+            console.log("İşaretli checkbox sayısı:", checkedCount);
+            
+            if (!allChecked) {
+                alert('Lütfen tüm kontrol listesi maddelerini onaylayın!');
+                e.preventDefault();
+                return false;
+            }
+            
+            // Yorum alanını kontrol et
+            var commentValue = $('[name="comment"]').val().trim();
+            console.log("Yorum değeri:", commentValue);
+            
+            if (!commentValue) {
+                alert('Lütfen bir değerlendirme yorumu yazınız.');
+                e.preventDefault();
+                return false;
+            }
+            
+            console.log("Onay formu gönderiliyor...");
+            // Normal submit'e izin ver
+            return true;
+        });
+        
+        // Debug için CSRF token kontrol et
+        var csrfToken = $('[name="csrf_token"]').val();
+        console.log("CSRF Token:", csrfToken ? "Mevcut" : "YOK!");
+    });
+</script>
+{% endblock %}

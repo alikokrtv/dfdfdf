@@ -1,0 +1,119 @@
+{% extends "layout.html" %}
+
+{% block title %}Aksiyonları Tamamlandı Olarak İşaretle - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">Aksiyonları Tamamlandı Olarak İşaretle</h1>
+                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Geri Dön
+                </a>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Bu işlem, düzeltici/önleyici faaliyetler için belirlediğiniz aksiyonları tamamladığınızı 
+                ve kaynak departmanın incelemesine gönderdiğinizi belirtir.
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Bilgileri</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>DÖF Numarası:</strong> #{{ dof.id }}</p>
+                            <p><strong>Başlık:</strong> {{ dof.title }}</p>
+                            <p><strong>Oluşturan:</strong> {{ dof.creator.fullname }}</p>
+                            <p><strong>Departman:</strong> {{ dof.department.name if dof.department else 'Belirtilmemiş' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Oluşturma Tarihi:</strong> {{ dof.created_at.strftime('%d.%m.%Y') }}</p>
+                            <p><strong>Aksiyon Sınıfı:</strong> {{ dof.action_class.name if dof.action_class else 'Belirtilmemiş' }}</p>
+                            <p><strong>Son Tarih:</strong> {{ dof.due_date.strftime('%d.%m.%Y') if dof.due_date else 'Belirtilmemiş' }}</p>
+                            <p><strong>Durum:</strong> 
+                                {% if dof.status == 9 %}
+                                <span class="badge bg-info">Aksiyon Planı Uygulama Aşamasında</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ dof.get_status_display() }}</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Aksiyon Planı</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Kök Neden Analizi</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {{ dof.root_cause1|safe|nl2br if dof.root_cause1 else 'Girilmemiş' }}
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Aksiyon Planı</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {{ dof.action_plan|safe|nl2br if dof.action_plan else 'Girilmemiş' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Tamamlama Bildirimi</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('dof.mark_as_completed', dof_id=dof.id) }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="mb-3">
+                            <label for="comment" class="form-label fw-bold">
+                                Tamamlama Detayları <span class="text-danger">*</span>
+                            </label>
+                            <textarea class="form-control" id="comment" name="comment" rows="5" required 
+                                      placeholder="Hangi aksiyonların tamamlandığını, ne gibi sonuçlar elde edildiğini ve varsa ek bilgileri detaylı olarak açıklayınız...">Aksiyon planında belirtilen tüm faaliyetler {{ current_user.department.name }} departmanı tarafından başarıyla tamamlanmıştır.</textarea>
+                            <div class="form-text">Bu açıklama kaynak departman tarafından incelenecektir.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="attachments" class="form-label fw-bold">
+                                Kanıt Dosyaları <small class="text-muted">(İsteğe bağlı)</small>
+                            </label>
+                            <input type="file" class="form-control" id="attachments" name="attachments" multiple 
+                                   accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx">
+                            <div class="form-text">
+                                Tamamlanan aksiyonları kanıtlayan belgeler ekleyebilirsiniz. 
+                                İzin verilen dosya tipleri: PDF, PNG, JPG, DOC, DOCX, XLS, XLSX (Max: 16MB)
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Dikkat:</strong> Bu işlem geri alınamaz. Tamamlandı olarak işaretlendikten sonra DÖF kaynak departmanın değerlendirmesine gönderilecektir.
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-1"></i> İptal
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check-double me-1"></i> Tamamlandı Olarak İşaretle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

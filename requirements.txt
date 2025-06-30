@@ -1,0 +1,32 @@
+flask==2.3.3
+flask-login==0.6.2
+flask-mail==0.9.1
+flask-migrate==4.0.5
+flask-socketio==5.5.1
+flask-sqlalchemy==3.1.1
+flask-wtf==1.2.1
+pymysql==1.1.0
+python-dateutil==2.8.2
+python-dotenv==1.0.0
+werkzeug==2.3.7
+wtforms==3.1.1
+gunicorn==21.2.0
+apscheduler==3.10.4
+email_validator==2.1.0
+
+# Excel raporu oluşturmak için
+pandas==2.2.1
+openpyxl==3.1.2
+xlsxwriter==3.2.3
+
+# PDF raporu oluşturmak için
+fpdf2==2.7.7
+weasyprint==62.3
+
+# WeasyPrint kurulum sorunları için:
+# Ubuntu/Debian: sudo apt-get install libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0
+# CentOS/RHEL: sudo yum install pango harfbuzz
+# Windows: Otomatik kurulur, GTK+ kütüphaneleri gerekebilir
+
+# Chart.js için gerekli olan
+matplotlib==3.8.3

@@ -1,0 +1,61 @@
+from flask import Blueprint, request, flash, redirect, url_for, current_app
+from flask_login import current_user, login_required
+from models import User
+from flask_mail import Message
+from app import mail
+import datetime
+
+feedback_bp = Blueprint('feedback', __name__, url_prefix='/feedback')
+
+@feedback_bp.route('/submit', methods=['POST'])
+@login_required
+def submit_feedback():
+    # Log form verilerini
+    current_app.logger.info(f"Geri bildirim formu alındı: {request.form}")
+    
+    # Form verilerini al
+    feedback_type = request.form.get('feedback_type', 'other')
+    subject = request.form.get('subject', '')
+    message = request.form.get('message', '')
+    
+    # Temel doğrulama
+    if not subject or not message:
+        flash('Konu ve mesaj alanları boş olamaz', 'danger')
+        return redirect(request.referrer or url_for('dof.dashboard'))
+    
+    # Admin e-posta adreslerini bul
+    admin_users = User.query.filter_by(is_admin=True).all()
+    admin_emails = [user.email for user in admin_users if user.email]
+    
+    if not admin_emails:
+        flash('Sistem yöneticisine ulaşılamadı. Lütfen daha sonra tekrar deneyiniz.', 'warning')
+        return redirect(request.referrer or url_for('dof.dashboard'))
+    
+    try:
+        # E-posta içeriği oluştur
+        email_subject = f"[Geri Bildirim] {subject}"
+        email_text = f"""Geri Bildirim
+
+Bildirim Türü: {feedback_type}
+Konu: {subject}
+Mesaj: {message}
+
+Gönderen: {current_user.first_name} {current_user.last_name} ({current_user.email})
+Tarih: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+        
+        # E-posta göndermeyi dene
+        msg = Message(
+            subject=email_subject,
+            recipients=admin_emails,
+            body=email_text
+        )
+        
+        # E-postayı gönder
+        mail.send(msg)
+        flash('Geri bildiriminiz başarıyla gönderildi. Teşekkürler!', 'success')
+    
+    except Exception as e:
+        current_app.logger.error(f"E-posta gönderilirken hata: {str(e)}")
+        flash('Geri bildiriminiz kaydedildi ancak e-posta gönderilirken bir hata oluştu.', 'warning')
+    
+    return redirect(request.referrer or url_for('dof.dashboard'))

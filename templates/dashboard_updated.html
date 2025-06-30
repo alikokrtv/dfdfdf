@@ -1,0 +1,350 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2">Dashboard</h1>
+    <a href="{{ url_for('dof.create_dof') }}" class="btn btn-primary">
+        <i class="fas fa-plus-circle me-1"></i> Yeni DÖF Oluştur
+    </a>
+</div>
+
+<!-- Durum Kartları -->
+<div class="row">
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Toplam DÖF</h6>
+                        <h3 class="mb-0">{{ status_counts.total }}</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-clipboard-list fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Devam Eden</h6>
+                        <h3 class="mb-0">{{ status_counts.in_progress }}</h3>
+                    </div>
+                    <div class="bg-warning bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-spinner fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Çözüldü</h6>
+                        <h3 class="mb-0">{{ status_counts.resolved }}</h3>
+                    </div>
+                    <div class="bg-success bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-check-circle fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Reddedildi</h6>
+                        <h3 class="mb-0">{{ status_counts.rejected }}</h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-times-circle fa-2x text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DÖF Kategorileri -->
+<div class="row">
+    <!-- Departmanıma Atanan DÖF'ler -->
+    <div class="col-md-6">
+        <div class="card mt-4">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Departmanıma Atanan DÖF'ler</h5>
+                    <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Başlık</th>
+                                <th>Kaynak</th>
+                                <th>Durum</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for dof in dept_assigned_dofs %}
+                            <tr>
+                                <td>{{ dof.id }}</td>
+                                <td>{{ dof.title }}</td>
+                                <td>
+                                    {% if dof.source_department %}
+                                        {{ dof.source_department.name }}
+                                    {% else %}
+                                        {% if dof.source == 1 %}
+                                            İç Denetim
+                                        {% elif dof.source == 2 %}
+                                            Dış Denetim
+                                        {% elif dof.source == 3 %}
+                                            Müşteri Şikayeti
+                                        {% elif dof.source == 4 %}
+                                            Çalışan Önerisi
+                                        {% elif dof.source == 5 %}
+                                            Uygunsuzluk
+                                        {% else %}
+                                            Diğer
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if dof.status == 0 %}
+                                        <span class="badge bg-warning">Taslak</span>
+                                    {% elif dof.status == 1 %}
+                                        <span class="badge bg-info">Gönderildi</span>
+                                    {% elif dof.status == 2 %}
+                                        <span class="badge bg-primary">İncelemede</span>
+                                    {% elif dof.status == 3 %}
+                                        <span class="badge bg-secondary">Atandı</span>
+                                    {% elif dof.status == 4 %}
+                                        <span class="badge bg-warning">Devam Ediyor</span>
+                                    {% elif dof.status == 5 %}
+                                        <span class="badge bg-success">Çözüldü</span>
+                                    {% elif dof.status == 6 %}
+                                        <span class="badge bg-success">Kapatıldı</span>
+                                    {% elif dof.status == 7 %}
+                                        <span class="badge bg-danger">Reddedildi</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">Departmanınıza atanmış DÖF bulunmamaktadır.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Departmanımın Açtığı DÖF'ler -->
+    <div class="col-md-6">
+        <div class="card mt-4">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Departmanımın Açtığı DÖF'ler</h5>
+                    <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Başlık</th>
+                                <th>Atanan Departman</th>
+                                <th>Durum</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for dof in dept_created_dofs %}
+                            <tr>
+                                <td>{{ dof.id }}</td>
+                                <td>{{ dof.title }}</td>
+                                <td>{{ dof.department.name if dof.department else 'Atanmamış' }}</td>
+                                <td>
+                                    {% if dof.status == 0 %}
+                                        <span class="badge bg-warning">Taslak</span>
+                                    {% elif dof.status == 1 %}
+                                        <span class="badge bg-info">Gönderildi</span>
+                                    {% elif dof.status == 2 %}
+                                        <span class="badge bg-primary">İncelemede</span>
+                                    {% elif dof.status == 3 %}
+                                        <span class="badge bg-secondary">Atandı</span>
+                                    {% elif dof.status == 4 %}
+                                        <span class="badge bg-warning">Devam Ediyor</span>
+                                    {% elif dof.status == 5 %}
+                                        <span class="badge bg-success">Çözüldü</span>
+                                    {% elif dof.status == 6 %}
+                                        <span class="badge bg-success">Kapatıldı</span>
+                                    {% elif dof.status == 7 %}
+                                        <span class="badge bg-danger">Reddedildi</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">Departmanınızın açtığı DÖF bulunmamaktadır.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- İkinci Satır -->
+<div class="row">
+    <!-- Yaklaşan Terminler -->
+    <div class="col-md-6">
+        <div class="card mt-4">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Yaklaşan Terminler</h5>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Başlık</th>
+                                <th>Termin</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if upcoming_deadlines %}
+                                {% for dof in upcoming_deadlines %}
+                                <tr>
+                                    <td>{{ dof.id }}</td>
+                                    <td>{{ dof.title }}</td>
+                                    <td>{{ dof.deadline.strftime('%d.%m.%Y') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center">Yaklaşan termin bulunmamaktadır</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_user.is_admin() or current_user.is_quality_manager() %}
+<div class="row mt-4">
+    <!-- Kullanıcı Aktiviteleri -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Son Kullanıcı Aktiviteleri</h5>
+                    <a href="{{ url_for('activity.activity_list') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% if user_activities %}
+                        {% for activity in user_activities %}
+                        <div class="list-group-item border-bottom py-2">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>{{ activity.user.fullname }}</strong>: {{ activity.activity_type }}
+                                    {% if activity.description %}
+                                    <div><small>{{ activity.description }}</small></div>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <small class="text-muted">{{ activity.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-center text-muted my-3">Aktivite bulunmamaktadır</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if current_user.is_admin() %}
+    <!-- Sistem Logları - Sadece Admin -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Sistem Logları</h5>
+                    <a href="{{ url_for('activity.system_logs') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% if system_logs %}
+                        {% for log in system_logs %}
+                        <div class="list-group-item border-bottom py-2">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    {{ log.action }}
+                                </div>
+                                <div>
+                                    <small class="text-muted">{{ log.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-center text-muted my-3">Log kaydı bulunmamaktadır</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

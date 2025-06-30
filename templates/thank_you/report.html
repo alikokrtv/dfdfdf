@@ -1,0 +1,244 @@
+{% extends "layout.html" %}
+
+{% block title %}Teşekkür Raporları{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    <i class="fas fa-chart-pie me-2"></i> Teşekkür Bildirimleri Raporu
+                </h2>
+                <div>
+                    <a href="{{ url_for('thank_you.export_thank_you_excel') }}" class="btn btn-success btn-sm me-2">
+                        <i class="fas fa-file-excel me-1"></i> Excel İndir
+                    </a>
+                    <a href="{{ url_for('thank_you.export_thank_you_pdf') }}" class="btn btn-danger btn-sm">
+                        <i class="fas fa-file-pdf me-1"></i> PDF İndir
+                    </a>
+                </div>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">Departman Bazında Teşekkür Sayıları</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if dept_counts %}
+                            <div class="chart-container" style="position: relative; height:400px;">
+                                <canvas id="deptChart"></canvas>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info">
+                                Henüz rapor için yeterli veri bulunmamaktadır.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">Aylık Teşekkür Bildirimi Sayıları</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if month_counts %}
+                            <div class="chart-container" style="position: relative; height:400px;">
+                                <canvas id="monthChart"></canvas>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info">
+                                Henüz rapor için yeterli veri bulunmamaktadır.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Departman Bazında Teşekkür Dağılımı</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Departman</th>
+                                    <th>Teşekkür Sayısı</th>
+                                    <th>Yüzde</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if dept_counts %}
+                                    <!-- Toplam değeri hesapla -->
+                                    {% set total = namespace(value=0) %}
+                                    {% for dept in dept_counts %}
+                                        <!-- {% set total.value = total.value + dept[1] %} -->
+                                        {% set _ = total.update({'value': total.value + dept[1]}) %}
+                                    {% endfor %}
+                                    
+                                    {% for dept_name, count in dept_counts %}
+                                    <tr>
+                                        <td>{{ dept_name or 'Belirtilmemiş' }}</td>
+                                        <td>{{ count }}</td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="progress flex-grow-1 me-2" style="height: 10px;">
+                                                    <div class="progress-bar bg-primary" role="progressbar" style="width: {{ (count / total.value * 100) if total.value > 0 else 0 }}%;" 
+                                                         aria-valuenow="{{ count }}" aria-valuemin="0" aria-valuemax="{{ total.value }}"></div>
+                                                </div>
+                                                <span>{{ "%.1f"|format(count / total.value * 100) if total.value > 0 else 0 }}%</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center">Henüz teşekkür bildirimi bulunmamaktadır.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <a href="{{ url_for('thank_you.list_thank_you') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> Listeye Dön
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // IDE linter hatasını önlemek için HTML yorum içinde Jinja2 kodunu işliyoruz
+    // Departman grafiği
+    /*
+     * Jinja2 template kodu aşağıdaki değişkenleri oluşturuyor:
+     * deptLabels - departman adları dizisi
+     * deptCounts - departman sayıları dizisi
+     * monthLabels - ay adları dizisi
+     * monthCounts - aylık sayılar dizisi
+     */
+     
+    // Jinja2 ile oluşturulan veriler
+    var deptLabels = [
+        /* Jinja2 start
+        {%- for dept_name, count in dept_counts -%}
+            '{{ dept_name or "Belirtilmemiş" }}'{% if not loop.last %},{% endif %}
+        {%- endfor -%}
+        Jinja2 end */
+    ];
+    var deptCounts = [
+        /* Jinja2 start
+        {%- for dept_name, count in dept_counts -%}
+            {{ count }}{% if not loop.last %},{% endif %}
+        {%- endfor -%}
+        Jinja2 end */
+    ];
+    
+    /* Jinja2 start
+    {% if dept_counts %}
+    Jinja2 end */
+    // Departman grafiği
+    if (document.getElementById('deptChart')) {
+        var deptCtx = document.getElementById('deptChart').getContext('2d');
+        var deptChart = new Chart(deptCtx, {
+            type: 'bar',
+            data: {
+                labels: deptLabels,
+                datasets: [{
+                    label: 'Teşekkür Sayısı',
+                    data: deptCounts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+    /* Jinja2 start
+    {% endif %}
+    Jinja2 end */
+    
+    // Jinja2 ile oluşturulan veriler
+    var monthLabels = [
+        /* Jinja2 start
+        {%- for month, count in month_counts -%}
+            '{{ month }}'{% if not loop.last %},{% endif %}
+        {%- endfor -%}
+        Jinja2 end */
+    ];
+    var monthCounts = [
+        /* Jinja2 start
+        {%- for month, count in month_counts -%}
+            {{ count }}{% if not loop.last %},{% endif %}
+        {%- endfor -%}
+        Jinja2 end */
+    ];
+    
+    /* Jinja2 start
+    {% if month_counts %}
+    Jinja2 end */
+    // Aylık trend grafiği
+    if (document.getElementById('monthChart')) {
+        var monthCtx = document.getElementById('monthChart').getContext('2d');
+        var monthChart = new Chart(monthCtx, {
+            type: 'line',
+            data: {
+                labels: monthLabels,
+                datasets: [{
+                    label: 'Teşekkür Sayısı',
+                    data: monthCounts,
+                    fill: false,
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+    /* Jinja2 start
+    {% endif %}
+    Jinja2 end */
+});
+</script>
+{% endblock %}

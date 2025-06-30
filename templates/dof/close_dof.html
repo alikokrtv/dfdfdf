@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Kapatma - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="me-auto">
+                <span class="fw-bold">Döküman No:</span> P.03.F01.01
+            </div>
+            <div class="mx-4">
+                <span class="fw-bold">Yayın Tarihi:</span> 01.08.2023
+            </div>
+            <div>
+                <span class="fw-bold">Revizyon Tarihi:</span> 22.09.2023
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">DÖF Son Değerlendirme ve Kapatma</h1>
+    <div>
+        <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Dön
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">DÖF #{{ dof.id }} - {{ dof.title }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <strong>Oluşturan:</strong> {{ dof.creator.full_name if dof.creator else 'Belirtilmemiş' }}
+            </div>
+            <div class="col-md-6">
+                <strong>Tarih:</strong> {{ dof.created_at.strftime('%d.%m.%Y %H:%M') }}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <strong>Departman:</strong> {{ dof.department.name if dof.department else 'Belirtilmemiş' }}
+            </div>
+            <div class="col-md-6">
+                <strong>Öncelik:</strong> 
+                {% if dof.priority == 1 %}
+                    <span class="badge bg-success">Düşük</span>
+                {% elif dof.priority == 2 %}
+                    <span class="badge bg-warning">Orta</span>
+                {% elif dof.priority == 3 %}
+                    <span class="badge bg-danger">Yüksek</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-12">
+                <strong>Açıklama:</strong>
+                <p class="mt-1">{{ dof.description }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="card-title mb-0">Çözüm Değerlendirmesi</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-12">
+                <p class="alert alert-info">
+                    Kaynak departman çözümü onaylamış durumda. Son değerlendirmenizi yaparak DÖF'ü kapatabilir veya gerekirse yeni bir DÖF açılmasını talep edebilirsiniz.
+                </p>
+            </div>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data">
+            {{ form.hidden_tag() }}
+            
+            <div class="mb-3">
+                <label for="comment" class="form-label">Değerlendirme Yorumu <span class="text-danger">*</span></label>
+                {{ form.comment(class="form-control" + (" is-invalid" if form.comment.errors else ""), rows=5, placeholder="DÖF hakkında değerlendirme yorumunuzu yazınız...") }}
+                {% if form.comment.errors %}
+                    <div class="invalid-feedback">
+                        {% for error in form.comment.errors %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="d-flex justify-content-between mt-4">
+                <button type="submit" name="close" class="btn btn-success btn-lg">
+                    <i class="fas fa-check-circle me-1"></i> DÖF'ü Kapat
+                </button>
+                <button type="submit" name="new_dof" class="btn btn-warning btn-lg">
+                    <i class="fas fa-exclamation-circle me-1"></i> Yeni DÖF Açılsın
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

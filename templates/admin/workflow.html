@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+
+{% block title %}İş Akışı Yönetimi - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">İş Akışı Yönetimi</h1>
+        <div>
+            <form method="POST" action="{{ url_for('admin.setup_default_workflow') }}" class="d-inline">
+                <button type="submit" class="btn btn-success me-2" onclick="return confirm('Varsayılan DÖF iş akışını oluşturmak istediğinizden emin misiniz?')">
+                    <i class="fas fa-magic me-1"></i> Varsayılan Akış Oluştur
+                </button>
+            </form>
+            <a href="{{ url_for('admin.create_workflow') }}" class="btn btn-primary">
+                <i class="fas fa-plus-circle me-1"></i> Yeni İş Akışı Ekle
+            </a>
+        </div>
+    </div>
+
+<!-- İş Akışı Rehberi -->
+<div class="alert alert-info mb-4">
+    <h5><i class="fas fa-info-circle me-2"></i>İş Akışı Sistemi Nasıl Kullanılır?</h5>
+    <p class="mb-2">İş akışı sistemi, DÖF süreçlerinizi standardize etmenize yardımcı olur:</p>
+    <ol class="mb-2">
+        <li><strong>Varsayılan Akış:</strong> Yukarıdaki "Varsayılan Akış Oluştur" butonuna tıklayarak standart DÖF sürecini otomatik oluşturabilirsiniz.</li>
+        <li><strong>Özel Akış:</strong> "Yeni İş Akışı Ekle" ile kendi özel sürecinizi tanımlayabilirsiniz.</li>
+        <li><strong>Adım Yönetimi:</strong> Her iş akışı için detaylı adımlar tanımlayıp rollere göre yetkilendirme yapabilirsiniz.</li>
+        <li><strong>Durum Geçişleri:</strong> Her adımda hangi durumdan hangi duruma geçiş yapılacağını belirleyebilirsiniz.</li>
+    </ol>
+    <small class="text-muted">💡 İpucu: Önce varsayılan akışı oluşturup inceleyerek sistem mantığını anlayabilirsiniz.</small>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover datatable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>İş Akışı Adı</th>
+                        <th>Açıklama</th>
+                        <th>Durum</th>
+                        <th>Oluşturulma Tarihi</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for workflow in workflows %}
+                    <tr>
+                        <td>{{ workflow.id }}</td>
+                        <td>{{ workflow.name }}</td>
+                        <td>{{ workflow.description|truncate(50) if workflow.description else "-" }}</td>
+                        <td>
+                            {% if workflow.is_active %}
+                                <span class="badge bg-success">Aktif</span>
+                            {% else %}
+                                <span class="badge bg-danger">Pasif</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ workflow.created_at.strftime('%d.%m.%Y') }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <a href="{{ url_for('admin.edit_workflow', workflow_id=workflow.id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Düzenle">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{{ url_for('admin.workflow_steps', workflow_id=workflow.id) }}" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Adımları Görüntüle">
+                                    <i class="fas fa-tasks"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Tooltips aktivasyonu
+        $('[data-bs-toggle="tooltip"]').tooltip();
+    });
+</script>
+{% endblock %}

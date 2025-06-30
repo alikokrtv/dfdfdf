@@ -1,0 +1,337 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Detayı - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">DÖF Detayı</h1>
+    <div class="d-flex align-items-center">
+        <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> DÖF Listesine Dön
+        </a>
+
+        <!-- İlk inceleme butonu: Taslak veya gönderildi durumundaki DÖF'ler için (sadece Kalite ve Admin) -->
+        {% if current_user.role in [0, 2] and dof.status in [0, 1, 2] %}
+        <a href="{{ url_for('dof.review_dof', dof_id=dof.id) }}" class="btn btn-primary ms-2 btn-lg">
+            <i class="fas fa-search me-1"></i> İncele ve Ata
+        </a>
+        {% endif %}
+        
+        <!-- Son değerlendirme butonu: Çözüldü durumundaki DÖF'ler için (sadece Kalite ve Admin) -->
+        {% if current_user.role in [0, 2] and dof.status == 5 %}
+        <a href="{{ url_for('dof.close_dof', dof_id=dof.id) }}" class="btn btn-success ms-2 btn-lg">
+            <i class="fas fa-check-double me-1"></i> Çözümü Değerlendir ve Kapat 
+        </a>
+        {% endif %}
+
+        <!-- Çözüm Planı Gir butonu: Sadece departman yöneticileri (rol 4) ve adminler, hem de çözüm planı girilmemişse -->
+        {% if (current_user.role == 4 or current_user.role == 0) and (not dof.root_cause1 or not dof.action_plan) and 
+              ((current_user.role == 4 and dof.department and current_user.department and current_user.department.id == dof.department.id and dof.created_by != current_user.id) or current_user.role == 0) %}
+        <a href="{{ url_for('dof.resolve_dof', dof_id=dof.id) }}" class="btn btn-success ms-2 btn-lg">
+            <i class="fas fa-clipboard-check me-1"></i> Kök Neden ve Aksiyon Planı Gir
+        </a>
+        {% endif %}
+        
+        <!-- Çözüldü olarak işaretle butonu - Departman yöneticileri için (kaynak ve atanan departmanlar) -->
+        {% if dof.status == 4 and ((current_user.role == 4 and dof.department and current_user.department and current_user.department.id == dof.department.id) or 
+                                  (current_user.role == 4 and current_user.department and current_user.department.id == dof.creator.department_id) or
+                                  current_user.role == 0) %}
+        <a href="{{ url_for('dof.mark_as_resolved', dof_id=dof.id) }}" class="btn btn-success ms-2">
+            <i class="fas fa-check me-1"></i> Çözüldü Olarak İşaretle
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- İş Akışı Bilgilendirmeleri -->
+{% if dof.status == 0 %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle me-2"></i> Bu DÖF Kalite onayındadır. Kalite departmanı tarafından değerlendirilecektir.
+</div>
+{% elif dof.status == 1 %}
+<div class="alert alert-warning mb-4">
+    <i class="fas fa-hourglass-half me-1"></i> Bu DÖF Kalite Departmanı tarafından değerlendirilmeyi bekliyor.
+</div>
+{% elif dof.status == 2 %}
+<div class="alert alert-primary mb-4">
+    <i class="fas fa-spinner me-1"></i> Bu DÖF şu anda kalite departmanı tarafından inceleniyor.
+</div>
+{% elif dof.status == 3 %}
+<div class="alert alert-secondary mb-4">
+    <i class="fas fa-people-arrows me-1"></i> Bu DÖF {{ dof.department.name }} departmanına atandı. Kök neden analizi ve aksiyon planının oluşturulması bekleniyor.
+</div>
+{% elif dof.status == 8 %}
+<div class="alert alert-warning mb-4">
+    <i class="fas fa-project-diagram me-1"></i> Kök neden analizi ve aksiyon planı hazırlandı. Kalite departmanı tarafından inceleme bekleniyor.
+</div>
+{% elif dof.status == 9 %}
+<div class="alert alert-info mb-4">
+    <i class="fas fa-cogs me-1"></i> Aksiyon planı onaylanmış ve uygulama aşamasında. Sorumlu departman: {{ dof.department.name }}
+</div>
+{% elif dof.status == 10 %}
+<div class="alert alert-success mb-4">
+    <i class="fas fa-check me-1"></i> Aksiyon planları tamamlandı. Kaynak departmanın onayı bekleniyor.
+</div>
+{% elif dof.status == 11 %}
+<div class="alert alert-info mb-4">
+    <i class="fas fa-search me-1"></i> Kaynak departman tarafından inceleme aşamasında. 
+</div>
+{% elif dof.status == 5 %}
+<div class="alert alert-success mb-4">
+    <i class="fas fa-check me-1"></i> Bu DÖF çözüldü. Kalite departmanı tarafından son inceleme bekleniyor.
+</div>
+{% elif dof.status == 6 %}
+<div class="alert alert-success mb-4">
+    <i class="fas fa-check-double me-1"></i> Bu DÖF başarıyla tamamlandı ve kapatıldı.
+</div>
+{% elif dof.status == 7 %}
+<div class="alert alert-danger mb-4">
+    <i class="fas fa-times-circle me-1"></i> Bu DÖF reddedildi.
+</div>
+{% elif dof.status == 4 %}
+<div class="alert alert-warning mb-4">
+    <i class="fas fa-exclamation-triangle me-1"></i> Bu DÖF üzerinde yeniden çalışma gerekiyor. Sorumlu departman: {{ dof.department.name }}
+</div>
+{% endif %}
+
+<!-- DÖF Detay Kartı -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <span class="badge bg-primary me-2">#{{ dof.id }}</span> {{ dof.title }}
+            </h5>
+            <div>
+                {% if dof.status == 0 %}
+                    <span class="badge bg-secondary">Taslak</span>
+                {% elif dof.status == 1 %}
+                    <span class="badge bg-info">Gönderildi</span>
+                {% elif dof.status == 2 %}
+                    <span class="badge bg-primary">İncelemede</span>
+                {% elif dof.status == 3 %}
+                    <span class="badge bg-warning">Atandı</span>
+                {% elif dof.status == 4 %}
+                    <span class="badge bg-info">Devam Ediyor</span>
+                {% elif dof.status == 5 %}
+                    <span class="badge bg-success">Çözüldü</span>
+                {% elif dof.status == 6 %}
+                    <span class="badge bg-success">Kapatıldı</span>
+                {% elif dof.status == 7 %}
+                    <span class="badge bg-danger">Reddedildi</span>
+                {% elif dof.status == 8 %}
+                    <span class="badge bg-warning">Aksiyon Planı İncelemede</span>
+                {% elif dof.status == 9 %}
+                    <span class="badge bg-info">Aksiyon Planı Uygulama Aşamasında</span>
+                {% elif dof.status == 10 %}
+                    <span class="badge bg-success">Aksiyonlar Tamamlandı</span>
+                {% elif dof.status == 11 %}
+                    <span class="badge bg-info">Kaynak Değerlendirmesinde</span>
+                {% endif %}
+                <span class="badge bg-secondary ml-2">{{ dof.created_at.strftime('%d.%m.%Y') }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Temel DÖF Bilgileri -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6 class="fw-bold">Temel Bilgiler</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="35%">Oluşturan</th>
+                        <td>{{ dof.creator.fullname }}</td>
+                    </tr>
+                    <tr>
+                        <th>Oluşturma Tarihi</th>
+                        <td>{{ dof.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                    </tr>
+                    <tr>
+                        <th>Departman</th>
+                        <td>{{ dof.creator.department.name if dof.creator.department else 'Belirtilmemiş' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Tür</th>
+                        <td>{{ dof.dof_type.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Kategori</th>
+                        <td>{{ dof.category.name if dof.category else 'Belirtilmemiş' }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="fw-bold">Atama Bilgileri</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="35%">Atanan Departman</th>
+                        <td>{{ dof.department.name if dof.department else 'Henüz atanmadı' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Atayan</th>
+                        <td>{{ dof.assigned_by.fullname if dof.assigned_by else 'Henüz atanmadı' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Atama Tarihi</th>
+                        <td>{{ dof.assigned_at.strftime('%d.%m.%Y %H:%M') if dof.assigned_at else 'Henüz atanmadı' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Aksiyon Sınıfı</th>
+                        <td>{{ dof.action_class.name if dof.action_class else 'Belirtilmemiş' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Öncelik</th>
+                        <td>
+                            {% if dof.priority == 0 %}
+                                <span class="badge bg-success">Düşük</span>
+                            {% elif dof.priority == 1 %}
+                                <span class="badge bg-warning">Orta</span>
+                            {% elif dof.priority == 2 %}
+                                <span class="badge bg-danger">Yüksek</span>
+                            {% elif dof.priority == 3 %}
+                                <span class="badge bg-danger text-white">Kritik</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Belirtilmemiş</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- DÖF Açıklaması ve İçeriği -->
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">Uygunsuzluk Açıklaması</h6>
+            <div class="border rounded p-3 bg-light">
+                {{ dof.description|safe|nl2br }}
+            </div>
+        </div>
+
+        <!-- Kök Neden ve Aksiyon Planı -->
+        {% if dof.root_cause1 or dof.action_plan %}
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">Kök Neden Analizi</h6>
+            <div class="border rounded p-3 bg-light mb-3">
+                {{ dof.root_cause1|safe|nl2br if dof.root_cause1 else 'Henüz girilmedi' }}
+            </div>
+
+            <h6 class="fw-bold mb-3">Aksiyon Planı</h6>
+            <div class="border rounded p-3 bg-light">
+                {{ dof.action_plan|safe|nl2br if dof.action_plan else 'Henüz girilmedi' }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Çözüm -->
+        {% if dof.resolution %}
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">Çözüm</h6>
+            <div class="border rounded p-3 bg-light">
+                {{ dof.resolution|safe|nl2br }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Ekler -->
+        {% if dof.attachments %}
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">Ekler</h6>
+            <div class="list-group">
+                {% for attachment in dof.attachments %}
+                <a href="{{ url_for('dof.download_attachment', attachment_id=attachment.id) }}" class="list-group-item list-group-item-action">
+                    <i class="fas fa-file me-2"></i> {{ attachment.original_filename }}
+                    <small class="text-muted ms-2">({{ attachment.file_size|filesizeformat }})</small>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- İşlem Geçmişi -->
+        <div class="mb-4">
+            <h6 class="fw-bold mb-3">İşlem Geçmişi</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Kullanıcı</th>
+                            <th>İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for action in dof.actions|sort(attribute='created_at', reverse=True) %}
+                        <tr>
+                            <td>{{ action.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td>{{ action.user.fullname }}</td>
+                            <td>{{ action.action }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yorum Bölümü -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Yorumlar</h5>
+    </div>
+    <div class="card-body">
+        <!-- Yorumlar -->
+        {% if dof.comments %}
+        <div class="mb-4">
+            {% for comment in dof.comments|sort(attribute='created_at') %}
+            <div class="d-flex mb-3">
+                <div class="flex-shrink-0">
+                    <div class="avatar bg-light rounded-circle d-flex justify-content-center align-items-center">
+                        <span class="h4 mb-0">{{ comment.user.fullname[0]|upper }}</span>
+                    </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <div class="bg-light rounded p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">{{ comment.user.fullname }}</h6>
+                            <small class="text-muted">{{ comment.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                        </div>
+                        <p class="mb-0">{{ comment.comment|safe|nl2br }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">Henüz yorum yapılmamış.</p>
+        {% endif %}
+
+        <!-- Yorum Formu -->
+        <form method="POST" action="{{ url_for('dof.add_dof_comment', dof_id=dof.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="comment" class="form-label fw-bold">Yorum Ekle</label>
+                <textarea class="form-control" id="comment" name="comment" rows="3" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane me-1"></i> Gönder
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // jQuery yüklendikten sonra çalışacak
+        if (typeof $ !== 'undefined') {
+            // Select2 initialize
+            $('.select2').select2({
+                theme: 'bootstrap4',
+                language: 'tr',
+                width: '100%'
+            });
+        }
+    });
+</script>
+{% endblock extra_scripts %}

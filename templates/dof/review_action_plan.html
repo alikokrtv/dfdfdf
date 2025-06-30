@@ -1,0 +1,197 @@
+{% extends "layout.html" %}
+
+{% block title %}Aksiyon Planı İnceleme - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<!-- Döküman Bilgileri -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="me-auto">
+                <span class="fw-bold">Döküman No:</span> P.03.F01.01
+            </div>
+            <div class="mx-4">
+                <span class="fw-bold">Yayın Tarihi:</span> 01.08.2023
+            </div>
+            <div>
+                <span class="fw-bold">Revizyon Tarihi:</span> 22.09.2023
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid mt-3">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">Aksiyon Planı İnceleme</h1>
+                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Geri Dön
+                </a>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Bu sayfada departman tarafından hazırlanan kök neden analizi ve aksiyon planını inceleyebilir ve onaylayabilirsiniz.
+                Gerekirse değişiklik talep edebilirsiniz.
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">DÖF Bilgileri</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>DÖF Numarası:</strong> #{{ dof.id }}</p>
+                            <p><strong>Başlık:</strong> {{ dof.title }}</p>
+                            <p><strong>Oluşturan:</strong> {{ dof.creator.full_name }}</p>
+                            <p><strong>Departman:</strong> {{ dof.department.name if dof.department else 'Belirtilmemiş' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Oluşturma Tarihi:</strong> {{ dof.created_at.strftime('%d.%m.%Y') }}</p>
+                            <p><strong>Aksiyon Sınıfı:</strong> {{ dof.action_class.name if dof.action_class else 'Belirtilmemiş' }}</p>
+                            <p><strong>Son Tarih:</strong> {{ dof.due_date.strftime('%d.%m.%Y') if dof.due_date else 'Belirtilmemiş' }}</p>
+                            <p><strong>Durum:</strong> 
+                                {% if dof.status == 8 %}
+                                <span class="badge bg-warning">Aksiyon Planı İncelemede</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ dof.status_name }}</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Uygunsuzluk Açıklaması</h5>
+                </div>
+                <div class="card-body">
+                    <div class="border rounded p-3 bg-light">
+                        {{ dof.description|safe|nl2br }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Kök Neden Analizi ve Aksiyon Planı</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Kök Neden Analizi</h6>
+                        {% if dof.root_cause1 %}
+                        <div class="border rounded p-3 bg-light mb-2">
+                            <h6 class="text-primary">Kök Neden 1:</h6>
+                            {{ dof.root_cause1|safe|nl2br }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if dof.root_cause2 %}
+                        <div class="border rounded p-3 bg-light mb-2">
+                            <h6 class="text-primary">Kök Neden 2:</h6>
+                            {{ dof.root_cause2|safe|nl2br }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if dof.root_cause3 %}
+                        <div class="border rounded p-3 bg-light mb-2">
+                            <h6 class="text-primary">Kök Neden 3:</h6>
+                            {{ dof.root_cause3|safe|nl2br }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if dof.root_cause4 %}
+                        <div class="border rounded p-3 bg-light mb-2">
+                            <h6 class="text-primary">Kök Neden 4:</h6>
+                            {{ dof.root_cause4|safe|nl2br }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if dof.root_cause5 %}
+                        <div class="border rounded p-3 bg-light mb-2">
+                            <h6 class="text-primary">Kök Neden 5:</h6>
+                            {{ dof.root_cause5|safe|nl2br }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if not dof.root_cause1 and not dof.root_cause2 and not dof.root_cause3 and not dof.root_cause4 and not dof.root_cause5 %}
+                        <div class="border rounded p-3 bg-light">
+                            <p class="text-muted mb-0">Kök neden girilmemiş</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Aksiyon Planı</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {{ dof.action_plan|safe|nl2br if dof.action_plan else 'Girilmemiş' }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Termin Tarihi</h6>
+                        <div class="border rounded p-3 bg-light">
+                            {% if dof.deadline %}
+                                <strong>{{ dof.deadline.strftime('%d.%m.%Y') }}</strong>
+                            {% else %}
+                                <span class="text-warning">Termin tarihi belirtilmemiş</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">İnceleme Değerlendirmesi</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('dof.review_action_plan', dof_id=dof.id) }}" id="actionPlanForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="approve" id="approve_action" value="0">
+                        
+                        <div class="mb-3">
+                            <label for="comment" class="form-label">Değerlendirme Notu <span class="text-muted">(Opsiyonel)</span></label>
+                            <textarea class="form-control" id="comment" name="comment" rows="5" placeholder="Aksiyon planı hakkındaki değerlendirmenizi yazın. Revizyon gerekiyorsa değişiklik talep etmek için 'Değişiklik Talep Et' butonunu kullanın."></textarea>
+                            <div class="form-text">Onaylama sırasında not eklemeniz zorunlu değildir. Boş bırakabilirsiniz.</div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-1"></i> İptal
+                            </a>
+                            <div>
+                                <a href="{{ url_for('dof.request_plan_revision', dof_id=dof.id) }}" class="btn btn-warning me-2">
+                                    <i class="fas fa-edit me-1"></i> Değişiklik Talep Et
+                                </a>
+                                <button type="button" id="approveButton" class="btn btn-success">
+                                    <i class="fas fa-check me-1"></i> Aksiyon Planını Onayla
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Onay butonuna tıklandığında
+        document.getElementById('approveButton').addEventListener('click', function() {
+            // Hidden input'a onay değerini ata
+            document.getElementById('approve_action').value = '1';
+            
+            // Formu gönder
+            document.getElementById('actionPlanForm').submit();
+        });
+    });
+</script>
+{% endblock %}
+
+{% endblock %}

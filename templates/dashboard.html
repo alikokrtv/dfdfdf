@@ -1,0 +1,1059 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - DÖF Yönetim Sistemi{% endblock %}
+
+{% block styles %}
+<style>
+/* Loader Styles */
+.loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    visibility: hidden;
+    opacity: 0;
+    transition: visibility 0s, opacity 0.3s;
+}
+
+.loader-overlay.show {
+    visibility: visible;
+    opacity: 1;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Widget yükleme animasyonu */
+.widget-loading {
+    min-height: 100px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.widget-loading::before {
+    content: "";
+    width: 30px;
+    height: 30px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Dashboard kart optimizasyonu */
+.dashboard-card {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Loading overlay -->
+<div id="loader-overlay" class="loader-overlay">
+    <div class="spinner"></div>
+</div>
+
+<!-- Sayfa yüklenmesini hızlandırmak için AJAX yükleme script'i -->
+<script>
+    // Tüm AJAX widget yüklemelerini yöneten fonksiyon
+    function loadAjaxWidgets() {
+        document.querySelectorAll('.ajax-widget').forEach(container => {
+            const url = container.getAttribute('data-url');
+            if (url) {
+                fetch(url)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response failed');
+                        }
+                        return response.text();
+                    })
+                    .then(html => {
+                        container.innerHTML = html;
+                        container.classList.remove('widget-loading');
+                        // Widget içindeki sayfalama bağlantılarını AJAX yüklemeleri için düzenleyelim
+                        setupPagination(container);
+                    })
+                    .catch(error => {
+                        console.error('Widget yüklenirken hata:', error);
+                        container.innerHTML = '<div class="alert alert-danger">Widget yüklenirken hata oluştu.</div>';
+                        container.classList.remove('widget-loading');
+                    });
+            }
+        });
+    }
+    
+    // Widget içindeki sayfalama bağlantılarını AJAX ile çalışacak şekilde düzenler
+    function setupPagination(container) {
+        const paginationLinks = container.querySelectorAll('.pagination a.page-link');
+        
+        paginationLinks.forEach(link => {
+            if (!link.getAttribute('href') || link.getAttribute('href') === '#') {
+                return; // Disable edilmiş linkler için işlem yapma
+            }
+            
+            link.addEventListener('click', function(e) {
+                e.preventDefault(); // Normal sayfa yönlendirmesini engelle
+                
+                const url = this.getAttribute('href');
+                const widget = this.closest('.ajax-widget');
+                
+                if (widget) {
+                    widget.classList.add('widget-loading');
+                    
+                    fetch(url)
+                        .then(response => response.text())
+                        .then(html => {
+                            widget.innerHTML = html;
+                            widget.classList.remove('widget-loading');
+                            // Yeni sayfalama bağlantılarını da hazırla
+                            setupPagination(widget);
+                        })
+                        .catch(error => {
+                            console.error('Sayfalama hatası:', error);
+                            widget.innerHTML = '<div class="alert alert-danger">Sayfalama sırasında hata oluştu.</div>';
+                            widget.classList.remove('widget-loading');
+                        });
+                }
+            });
+        });
+    }
+
+    // Sayfa yüklendiğinde tüm AJAX widget'ları yükle
+    document.addEventListener('DOMContentLoaded', loadAjaxWidgets);
+</script>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2">Dashboard</h1>
+        
+        <!-- Bölge Müdürü için Gelişmiş Departman Filtresi -->
+        {% if current_user.role == 3 and managed_departments|length > 0 %}
+        <div class="mt-2">
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedDepartmentFilter" aria-expanded="false" aria-controls="advancedDepartmentFilter">
+                <i class="fas fa-filter me-1"></i> 
+                {% if selected_departments %}
+                    {{ selected_departments|length }} Departman Filtreleniyor
+                {% else %}
+                    Departman Filtresi
+                {% endif %}
+            </button>
+        </div>
+        
+        <!-- Gelişmiş Departman Filtreleme Paneli -->
+        <div class="collapse mt-3" id="advancedDepartmentFilter">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Departman Filtreleme</h5>
+                    <button class="btn btn-sm btn-outline-secondary" id="resetFilters"><i class="fas fa-sync-alt me-1"></i>Sıfırla</button>
+                </div>
+                <div class="card-body">
+                    <!-- Arama kutusu -->
+                    <div class="input-group mb-3">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="departmentSearch" placeholder="Departman ara...">
+                    </div>
+                    
+                    <!-- Departman seçim listesi -->
+                    <div class="departman-list" style="max-height: 300px; overflow-y: auto;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="selectAllDepartments" {% if not selected_departments %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="selectAllDepartments">
+                                Tüm Departmanlar
+                            </label>
+                        </div>
+                        <hr>
+                        {% for dept in managed_departments %}
+                        <div class="form-check">
+                            <input class="form-check-input dept-checkbox" type="checkbox" value="{{ dept.id }}" id="dept{{ dept.id }}" {% if not selected_departments or dept.id in selected_departments %}checked{% endif %}>
+                            <label class="form-check-label" for="dept{{ dept.id }}">
+                                {{ dept.name }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="button" class="btn btn-primary" id="applyFilters">Filtreyi Uygula</button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if current_user.role == 5 and current_user.get_managed_departments() %}  <!-- Bölge Müdürü ise -->
+        <div class="dropdown mt-2">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="departmentSelector" data-bs-toggle="dropdown" aria-expanded="false">
+                {% if department_filter %}
+                {{ department_filter.name }}
+                {% else %}
+                Tüm Departmanlar
+                {% endif %}
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="departmentSelector">
+                <li><a class="dropdown-item" href="{{ url_for('dashboard.index') }}">Tüm Departmanlar</a></li>
+                {% for dept in current_user.get_managed_departments() %}
+                <li><a class="dropdown-item" href="{{ url_for('dashboard.index', department_id=dept.id) }}">{{ dept.name }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <a href="{{ url_for('dof.create_dof') }}" class="btn btn-primary">
+        <i class="fas fa-plus-circle me-1"></i> Yeni DÖF Oluştur
+    </a>
+</div>
+
+<!-- Süreç Bilgilendirme ve Hatırlatıcılar -->
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-header bg-light d-flex align-items-center">
+        <i class="fas fa-info-circle text-primary me-2"></i>
+        <h5 class="mb-0">DÖF Süreç Bilgilendirmesi</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-light border rounded">
+            <h6 class="fw-bold"><i class="fas fa-map-signs me-1 text-primary"></i> DÖF İş Akışı Özeti</h6>
+            <ol class="mb-0 ps-3">
+                <li><b>Oluşturma:</b> Bir DÖF oluşturulduğunda, ilgili birim yöneticisi bilgilendirilir</li>
+                <li><b>Aksiyon Planı:</b> Birim yöneticisi, atanan DÖF için bir aksiyon planı oluşturur</li>
+                <li><b>İnceleme:</b> Kalite yöneticisi, oluşturulan aksiyon planını inceler ve onaylar/reddeder</li>
+                <li><b>Çözüm:</b> Aksiyon planı onaylanınca, birim çözüm çalışmalarını gerçekleştirir</li>
+                <li><b>Doğrulama:</b> Çözüm sonrası, kalite yöneticisi sonuçları doğrular ve DÖF sürecini tamamlar</li>
+            </ol>
+        </div>
+        
+        {% if current_user.overdue_dofs or current_user.approaching_dofs %}
+        <div class="alert alert-warning mt-3">
+            <h6 class="fw-bold"><i class="fas fa-clock me-1"></i> Görev Hatırlatıcıları</h6>
+            <ul class="mb-0 ps-3">
+                {% if current_user.overdue_dofs %}
+                <li class="mb-2">
+                    <span class="badge bg-danger">Gecikmiş</span> Yanıt bekleyen <b>{{ current_user.overdue_dofs }}</b> gecikmiş DÖF bulunmaktadır.
+                    <a href="{{ url_for('dof.list_dofs', overdue=1) }}" class="ms-1 small">Görüntüle</a>
+                </li>
+                {% endif %}
+                {% if current_user.approaching_dofs %}
+                <li>
+                    <span class="badge bg-warning text-dark">Yaklaşan</span> <b>{{ current_user.approaching_dofs }}</b> DÖF'ün son işlem tarihi yaklaşıyor.
+                    <a href="{{ url_for('dof.list_dofs', approaching=1) }}" class="ms-1 small">Görüntüle</a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <div class="alert alert-info mt-3">
+            <h6 class="fw-bold"><i class="fas fa-lightbulb me-1"></i> İpuçları</h6>
+            <ul class="mb-0 ps-3">
+                <li>Her DÖF detay sayfasında artık görsel bir ilerleme çubuğu bulunmaktadır</li>
+                <li>Aksiyon planını incelerken artık yorum alanı opsiyonel olarak bırakılabilir</li>
+                <li>Tüm durum değişiklikleri için ilgili kişilere bildirim gönderilmektedir</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Çoklu Departman Filtre Bilgisi -->
+{% if selected_departments %}
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <div class="d-flex align-items-center">
+        <div class="me-3">
+            <i class="fas fa-info-circle fa-2x"></i>
+        </div>
+        <div>
+            <h5 class="alert-heading mb-1">Filtreleme Durumu</h5>
+            <p class="mb-0">
+                <strong>{{ selected_departments|length }}</strong> departman seçildi:
+                {% for dept_id in selected_departments %}
+                    {% for dept in managed_departments %}{% if dept.id == dept_id %}
+                        <span class="badge bg-secondary">{{ dept.name }}</span>
+                    {% endif %}{% endfor %}
+                {% endfor %}
+            </p>
+        </div>
+    </div>
+    <a href="{{ url_for('dof.dashboard') }}" class="btn btn-sm btn-outline-dark mt-2">Tüm Departmanları Göster</a>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
+<!-- Durum Kartları -->
+<div class="row mb-4">
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Toplam DÖF</h6>
+                        <h3 class="mb-0">{{ status_counts.total }}</h3>
+                        <small class="text-muted">Tüm zamanlar</small>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-clipboard-list fa-2x text-primary"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fas fa-list me-1"></i> Tümünü Görüntüle
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Devam Eden</h6>
+                        <h3 class="mb-0">{{ status_counts.in_progress_total }}</h3>
+                        <small class="text-muted">İnceleme ve uygulama aşamasında</small>
+                    </div>
+                    <div class="bg-warning bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-clock fa-2x text-warning"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', active_only=1) }}" class="btn btn-sm btn-outline-warning w-100">
+                        <i class="fas fa-eye me-1"></i> Devam Edenleri Gör
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+   
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Atanmayı Bekleyen</h6>
+                        <h3 class="mb-0">{{ status_counts.pending_approval }}</h3>
+                        <small class="text-muted">İncelemede (2. aşama)</small>
+                    </div>
+                    <div class="bg-info bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-hourglass-half fa-2x text-info"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                                            <a href="{{ url_for('dof.list_dofs', status=2) }}" class="btn btn-sm btn-outline-info w-100">
+                            <i class="fas fa-search me-1"></i> Bekleyenleri Gör
+                        </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Kapatılan</h6>
+                        <h3 class="mb-0">{{ status_counts.closed }}</h3>
+                        <small class="text-muted">Tamamlanan DÖF'ler</small>
+                    </div>
+                    <div class="bg-success bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-check-circle fa-2x text-success"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', status=6) }}" class="btn btn-sm btn-outline-success w-100">
+                        <i class="fas fa-check me-1"></i> Kapatılanları Gör
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Kalite Departmanı Özet Göstergeleri -->
+{% if current_user.is_quality_manager() or current_user.is_admin() %}
+<div class="row mb-4 mt-2">
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm border-start border-5 border-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">İnceleme Bekleyen DÖF'ler</h6>
+                        <h3 class="mb-0">{{ waiting_review_count }}</h3>
+                    </div>
+                    <div class="bg-info bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-clipboard-check fa-2x text-info"></i>
+                    </div>
+                </div>
+                {% if waiting_review_count > 0 %}
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', status=1) }}" class="btn btn-sm btn-outline-info w-100">Görüntüle</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm border-start border-5 border-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Planlama İncelemesi</h6>
+                        <h3 class="mb-0">{{ status_counts.planning }}</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-project-diagram fa-2x text-primary"></i>
+                    </div>
+                </div>
+                {% if status_counts.planning > 0 %}
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', status=8) }}" class="btn btn-sm btn-outline-primary w-100">Görüntüle</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm border-start border-5 border-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Tamamlanan Aksiyonlar</h6>
+                        <h3 class="mb-0">{{ status_counts.completed }}</h3>
+                    </div>
+                    <div class="bg-success bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-tasks fa-2x text-success"></i>
+                    </div>
+                </div>
+                {% if status_counts.completed > 0 %}
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', status=10) }}" class="btn btn-sm btn-outline-success w-100">Görüntüle</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm border-start border-5 border-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Çözülmeyi Bekleyen DÖF'ler</h6>
+                        <h3 class="mb-0">{{ status_counts.resolved }}</h3>
+                    </div>
+                    <div class="bg-warning bg-opacity-10 rounded-circle p-3">
+                        <i class="fas fa-check-double fa-2x text-warning"></i>
+                    </div>
+                </div>
+                {% if status_counts.resolved > 0 %}
+                <div class="mt-3">
+                    <a href="{{ url_for('dof.list_dofs', status=5) }}" class="btn btn-sm btn-outline-warning w-100">Görüntüle</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Kalite Yöneticisi İçin Ek Widget'lar -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-search me-2"></i> Atanmayı Bekleyen DÖF'ler</h5>
+                    <span class="badge bg-warning">İNCELEMEDE</span>
+                </div>
+            </div>
+            <div class="card-body">
+                                    <div id="assignment-waiting-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=2) }}">
+                        <!-- Atanmayı bekleyen DÖF'ler buraya yüklenecek -->
+                    </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card dashboard-card border-0 shadow-sm">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i> Onaylaması Gereken DÖF'ler</h5>
+                    <span class="badge bg-warning">Onay Bekliyor</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="quality-approval-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=8) }}">
+                    <!-- Onaylaması gereken DÖF'ler buraya yüklenecek -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- DÖF Kategorileri - Rol Bazlı Widget'lar -->
+<div class="row">
+    {% if current_user.is_admin() or current_user.is_quality_manager() %}
+        <!-- Admin ve Kalite Yöneticisi için Özel Widget'lar -->
+        
+        <!-- İnceleme Bekleyen DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-search me-2 text-info"></i>
+                            İnceleme Bekleyen DÖF'ler
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status='1,2') }}" class="btn btn-sm btn-outline-info">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="quality-review-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status='1,2', limit=5) }}">
+                        <!-- İnceleme bekleyen DÖF'ler buraya yüklenecek -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Onay Bekleyen Aksiyon Planları -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-clipboard-check me-2 text-primary"></i>
+                            Onay Bekleyen Aksiyon Planları
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status=8) }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="quality-planning-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=8, limit=5) }}">
+                        <!-- Planlama bekleyen DÖF'ler buraya yüklenecek -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <!-- Departman Yöneticisi ve Normal Kullanıcılar için Mevcut Widget'lar -->
+        
+        <!-- Departmanıma Atanan DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Departmanıma Atanan DÖF'ler</h5>
+                        <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="dept-dofs-container" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, department=current_user.department_id if current_user.department_id else 0) }}">
+                        <!-- Veriler AJAX ile doldurulacak -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Departmanımın Açtığı DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Departmanımın Açtığı DÖF'ler</h5>
+                        <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="dept-created-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.dept_created_dofs_widget') }}">
+                        <!-- Veriler AJAX ile doldurulacak -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- İkinci Satır - Terminler veya Kalite Değerlendirmeleri -->
+<div class="row">
+    {% if current_user.is_admin() or current_user.is_quality_manager() %}
+        <!-- Kalite Değerlendirmesi Gereken DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-double me-2 text-success"></i>
+                            Kalite Değerlendirmesi Gereken
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status=10) }}" class="btn btn-sm btn-outline-success">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="quality-evaluation-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=10, limit=5) }}">
+                        <!-- Kalite değerlendirmesi gereken DÖF'ler -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Son Kapatılan DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle me-2 text-success"></i>
+                            Son Kapatılan DÖF'ler
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status=6) }}" class="btn btn-sm btn-outline-success">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="recently-closed-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=6, limit=5) }}">
+                        <!-- Son kapatılan DÖF'ler -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <!-- Departman Yöneticisi için Yaklaşan Terminler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Departmanıma Atanan Yaklaşan Terminler</h5>
+                        <a href="{{ url_for('dof.list_dofs', department=current_user.department_id, deadline_after=current_date.strftime('%Y-%m-%d')) }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Başlık</th>
+                                    <th>Durum</th>
+                                    <th>Termin</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if assigned_upcoming_deadlines %}
+                                    {% for dof in assigned_upcoming_deadlines %}
+                                    <tr>
+                                        <td>{{ dof.id }}</td>
+                                        <td>{{ dof.title }}</td>
+                                        <td>
+                                            {% if dof.status == 0 %}<span class="badge bg-secondary">Taslak</span>{% endif %}
+                                            {% if dof.status == 1 %}<span class="badge bg-info">Gönderildi</span>{% endif %}
+                                            {% if dof.status == 2 %}<span class="badge bg-info">İncelemede</span>{% endif %}
+                                            {% if dof.status == 3 %}<span class="badge bg-warning">Atandı</span>{% endif %}
+                                            {% if dof.status == 4 %}<span class="badge bg-warning">Devam Ediyor</span>{% endif %}
+                                            {% if dof.status == 5 %}<span class="badge bg-success">Çözüldü</span>{% endif %}
+                                            {% if dof.status == 6 %}<span class="badge bg-success">Kapatıldı</span>{% endif %}
+                                            {% if dof.status == 7 %}<span class="badge bg-danger">Reddedildi</span>{% endif %}
+                                            {% if dof.status == 8 %}<span class="badge bg-primary">Planlama</span>{% endif %}
+                                            {% if dof.status == 9 %}<span class="badge bg-primary">Uygulama</span>{% endif %}
+                                            {% if dof.status == 10 %}<span class="badge bg-success">Tamamlandı</span>{% endif %}
+                                            {% if dof.status == 11 %}<span class="badge bg-info">Kaynak İnceleme</span>{% endif %}
+                                        </td>
+                                        <td>{{ dof.deadline.strftime('%d.%m.%Y') }}</td>
+                                        <td>
+                                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center">Departmanıma atanan yaklaşan termin bulunmamaktadır</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Departmanımın Açtığı Yaklaşan Terminler -->
+            <div class="col-md-6">
+                <div class="card mt-4">
+                    <div class="card-header bg-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Departmanımın Açtığı Yaklaşan Terminler</h5>
+                            <a href="{{ url_for('dof.list_dofs', created_dept=current_user.department_id, deadline_after=current_date.strftime('%Y-%m-%d')) }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Başlık</th>
+                                        <th>Durum</th>
+                                        <th>Termin</th>
+                                        <th>İşlemler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if created_upcoming_deadlines %}
+                                        {% for dof in created_upcoming_deadlines %}
+                                        <tr>
+                                            <td>{{ dof.id }}</td>
+                                            <td>{{ dof.title }}</td>
+                                            <td>
+                                                {% if dof.status == 0 %}<span class="badge bg-secondary">Taslak</span>{% endif %}
+                                                {% if dof.status == 1 %}<span class="badge bg-info">Gönderildi</span>{% endif %}
+                                                {% if dof.status == 2 %}<span class="badge bg-info">İncelemede</span>{% endif %}
+                                                {% if dof.status == 3 %}<span class="badge bg-warning">Atandı</span>{% endif %}
+                                                {% if dof.status == 4 %}<span class="badge bg-warning">Devam Ediyor</span>{% endif %}
+                                                {% if dof.status == 5 %}<span class="badge bg-success">Çözüldü</span>{% endif %}
+                                                {% if dof.status == 6 %}<span class="badge bg-success">Kapatıldı</span>{% endif %}
+                                                {% if dof.status == 7 %}<span class="badge bg-danger">Reddedildi</span>{% endif %}
+                                                {% if dof.status == 8 %}<span class="badge bg-primary">Planlama</span>{% endif %}
+                                                {% if dof.status == 9 %}<span class="badge bg-primary">Uygulama</span>{% endif %}
+                                                {% if dof.status == 10 %}<span class="badge bg-success">Tamamlandı</span>{% endif %}
+                                                {% if dof.status == 11 %}<span class="badge bg-info">Kaynak İnceleme</span>{% endif %}
+                                            </td>
+                                            <td>{{ dof.deadline.strftime('%d.%m.%Y') }}</td>
+                                            <td>
+                                                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center">Departmanımın açtığı yaklaşan termin bulunmamaktadır</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+<!-- Üçüncü Satır - Geçmiş Terminler veya Reddedilen DÖF'ler -->
+<div class="row">
+    {% if current_user.is_admin() or current_user.is_quality_manager() %}
+        <!-- Reddedilen DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-times-circle me-2 text-danger"></i>
+                            Reddedilen DÖF'ler
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status=7) }}" class="btn btn-sm btn-outline-danger">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="rejected-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=7, limit=5) }}">
+                        <!-- Reddedilen DÖF'ler -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Kaynak İncelemesi Bekleyen DÖF'ler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-microscope me-2 text-info"></i>
+                            Kaynak İncelemesi Bekleyen
+                        </h5>
+                        <a href="{{ url_for('dof.list_dofs', status=11) }}" class="btn btn-sm btn-outline-info">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="source-review-dofs" class="table-responsive widget-loading ajax-widget" data-url="{{ url_for('dof.list_dofs', ajax=1, status=11, limit=5) }}">
+                        <!-- Kaynak incelemesi bekleyen DÖF'ler -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <!-- Departman Yöneticisi için Geçmiş Terminler -->
+        <div class="col-md-6">
+            <div class="card mt-4">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Departmanıma Atanan Geçmiş Terminler</h5>
+                        <a href="{{ url_for('dof.list_dofs', department=current_user.department_id, deadline_before=current_date.strftime('%Y-%m-%d')) }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Başlık</th>
+                                    <th>Durum</th>
+                                    <th>Termin</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if assigned_overdue_deadlines %}
+                                    {% for dof in assigned_overdue_deadlines %}
+                                    <tr>
+                                        <td>{{ dof.id }}</td>
+                                        <td>{{ dof.title }}</td>
+                                        <td>
+                                            {% if dof.status == 0 %}<span class="badge bg-secondary">Taslak</span>{% endif %}
+                                            {% if dof.status == 1 %}<span class="badge bg-info">Gönderildi</span>{% endif %}
+                                            {% if dof.status == 2 %}<span class="badge bg-info">İncelemede</span>{% endif %}
+                                            {% if dof.status == 3 %}<span class="badge bg-warning">Atandı</span>{% endif %}
+                                            {% if dof.status == 4 %}<span class="badge bg-warning">Devam Ediyor</span>{% endif %}
+                                            {% if dof.status == 5 %}<span class="badge bg-success">Çözüldü</span>{% endif %}
+                                            {% if dof.status == 6 %}<span class="badge bg-success">Kapatıldı</span>{% endif %}
+                                            {% if dof.status == 7 %}<span class="badge bg-danger">Reddedildi</span>{% endif %}
+                                            {% if dof.status == 8 %}<span class="badge bg-primary">Planlama</span>{% endif %}
+                                            {% if dof.status == 9 %}<span class="badge bg-primary">Uygulama</span>{% endif %}
+                                            {% if dof.status == 10 %}<span class="badge bg-success">Tamamlandı</span>{% endif %}
+                                            {% if dof.status == 11 %}<span class="badge bg-info">Kaynak İnceleme</span>{% endif %}
+                                        </td>
+                                        <td class="text-danger">{{ dof.deadline.strftime('%d.%m.%Y') }}</td>
+                                        <td>
+                                            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center">Departmanıma atanan geçmiş termin bulunmamaktadır</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Departmanımın Açtığı Geçmiş Terminler -->
+            <div class="col-md-6">
+                <div class="card mt-4">
+                    <div class="card-header bg-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Departmanımın Açtığı Geçmiş Terminler</h5>
+                            <a href="{{ url_for('dof.list_dofs', created_dept=current_user.department_id, deadline_before=current_date.strftime('%Y-%m-%d')) }}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Başlık</th>
+                                        <th>Durum</th>
+                                        <th>Termin</th>
+                                        <th>İşlemler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if created_overdue_deadlines %}
+                                        {% for dof in created_overdue_deadlines %}
+                                        <tr>
+                                            <td>{{ dof.id }}</td>
+                                            <td>{{ dof.title }}</td>
+                                            <td>
+                                                {% if dof.status == 0 %}<span class="badge bg-secondary">Taslak</span>{% endif %}
+                                                {% if dof.status == 1 %}<span class="badge bg-info">Gönderildi</span>{% endif %}
+                                                {% if dof.status == 2 %}<span class="badge bg-info">İncelemede</span>{% endif %}
+                                                {% if dof.status == 3 %}<span class="badge bg-warning">Atandı</span>{% endif %}
+                                                {% if dof.status == 4 %}<span class="badge bg-warning">Devam Ediyor</span>{% endif %}
+                                                {% if dof.status == 5 %}<span class="badge bg-success">Çözüldü</span>{% endif %}
+                                                {% if dof.status == 6 %}<span class="badge bg-success">Kapatıldı</span>{% endif %}
+                                                {% if dof.status == 7 %}<span class="badge bg-danger">Reddedildi</span>{% endif %}
+                                                {% if dof.status == 8 %}<span class="badge bg-primary">Planlama</span>{% endif %}
+                                                {% if dof.status == 9 %}<span class="badge bg-primary">Uygulama</span>{% endif %}
+                                                {% if dof.status == 10 %}<span class="badge bg-success">Tamamlandı</span>{% endif %}
+                                                {% if dof.status == 11 %}<span class="badge bg-info">Kaynak İnceleme</span>{% endif %}
+                                            </td>
+                                            <td class="text-danger">{{ dof.deadline.strftime('%d.%m.%Y') }}</td>
+                                            <td>
+                                                <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center">Departmanımın açtığı geçmiş termin bulunmamaktadır</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+{% if current_user.is_admin() or current_user.is_quality_manager() %}
+<div class="row mt-4">
+    <!-- Kullanıcı Aktiviteleri -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2 text-primary"></i>
+                        Son Kullanıcı Aktiviteleri
+                    </h5>
+                    <a href="{{ url_for('activity.activity_list') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-external-link-alt me-1"></i> Tümünü Gör
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="activity-scroll" style="max-height: 360px; overflow-y: auto; scrollbar-width: thin;">
+                    <div class="list-group list-group-flush">
+                        {% if user_activities %}
+                            {% for activity in user_activities %}
+                            <div class="list-group-item border-bottom py-2 px-3">
+                                <div class="d-flex align-items-start">
+                                    <div class="activity-icon rounded-circle bg-light p-2 me-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                        {% if activity.activity_type == 'update_dof' %}
+                                            <i class="fas fa-edit text-primary"></i>
+                                        {% elif activity.activity_type == 'create_dof' %}
+                                            <i class="fas fa-plus-circle text-success"></i>
+                                        {% elif activity.activity_type == 'review_dof' %}
+                                            <i class="fas fa-search text-info"></i> 
+                                        {% else %}
+                                            <i class="fas fa-clipboard-list text-secondary"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <div><strong>{{ activity.user.full_name }}</strong></div>
+                                            <small class="text-muted ms-2">{{ activity.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                        </div>
+                                        <div>
+                                            {% if activity.activity_type == 'update_dof' %}
+                                                DÖF'ü güncelledi
+                                            {% elif activity.activity_type == 'create_dof' %}
+                                                DÖF oluşturdu
+                                            {% elif activity.activity_type == 'review_dof' %}
+                                                DÖF'u inceledi
+                                            {% else %}
+                                                {{ activity.activity_type }}
+                                            {% endif %}
+                                            
+                                            {% if activity.related_id %}
+                                                <a href="{{ url_for('dof.detail', dof_id=activity.related_id) }}" class="badge bg-light text-secondary ms-1">#{{ activity.related_id }}</a>
+                                            {% endif %}
+                                            
+                                            {% if activity.description and activity.description | trim %}
+                                                <div class="text-muted small mt-1 border-start border-2 ps-2">{{ activity.description }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted p-4">
+                                <i class="fas fa-info-circle mb-2 fs-4"></i>
+                                <p class="mb-0">Aktivite bulunmamaktadır</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if current_user.is_admin() %}
+    <!-- Sistem Logları - Sadece Admin -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-server me-2 text-secondary"></i>
+                        Sistem Logları
+                    </h5>
+                    <a href="{{ url_for('activity.system_logs') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-external-link-alt me-1"></i> Tümünü Gör
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="activity-scroll" style="max-height: 360px; overflow-y: auto; scrollbar-width: thin;">
+                    <div class="list-group list-group-flush">
+                        {% if system_logs %}
+                            {% for log in system_logs %}
+                            <div class="list-group-item border-bottom py-2 px-3">
+                                <div class="d-flex align-items-start">
+                                    <div class="activity-icon rounded-circle bg-light p-2 me-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                        <i class="fas fa-cog text-secondary"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <div><strong>Sistem</strong></div>
+                                            <small class="text-muted ms-2">{{ log.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                        </div>
+                                        <div>
+                                            {{ log.action }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted p-4">
+                                <i class="fas fa-info-circle mb-2 fs-4"></i>
+                                <p class="mb-0">Log kaydı bulunmamaktadır</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+

@@ -1,0 +1,260 @@
+{% extends "layout.html" %}
+
+{% block title %}DÖF Değerlendirme - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<!-- Döküman Bilgileri -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="me-auto">
+                <span class="fw-bold">Döküman No:</span> P.03.F01.01
+            </div>
+            <div class="mx-4">
+                <span class="fw-bold">Yayın Tarihi:</span> 01.08.2023
+            </div>
+            <div>
+                <span class="fw-bold">Revizyon Tarihi:</span> 22.09.2023
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">DÖF Kalite Değerlendirme</h1>
+    <div>
+        <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> DÖF Detayına Dön
+        </a>
+    </div>
+</div>
+
+<!-- DÖF Detay Kartı -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <span class="badge bg-primary me-2">#{{ dof.id }}</span> {{ dof.title }}
+            </h5>
+            <div>
+                <span class="badge bg-info">İncelemede</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Açıklama -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h6 class="mb-2">Açıklama</h6>
+                <div class="bg-light p-3 rounded">
+                    {{ dof.description|nl2br|safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Değerlendirme Formu -->
+        <form method="POST" class="needs-validation" id="qualityReviewForm" novalidate>
+            {{ form.csrf_token }}
+            
+            <div class="card mb-4" id="controlListCard">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Değerlendirme Kontrol Listesi</h6>
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input check-item" type="checkbox" id="check1" name="check_fields">
+                        <label class="form-check-label" for="check1">
+                            DÖF tanımı açık, anlaşılır şekilde ifade edilmiş mi?
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input check-item" type="checkbox" id="check3" name="check_department">
+                        <label class="form-check-label" for="check3">
+                            DÖF doğru departmana yönlendirilmiş mi?
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input check-item" type="checkbox" id="check4" name="check_type">
+                        <label class="form-check-label" for="check4">
+                            DÖF tipi (düzeltici/önleyici) doğru seçilmiş mi?
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="processingAlert" class="alert alert-info mb-4" style="display: none;">
+    <i class="fas fa-spinner fa-spin me-2"></i> Departman değişikliği yapılıyor, lütfen bekleyin...
+</div>
+
+<div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Atama Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i> Kaynak departman <strong>{{ dof.creator.department.name if dof.creator and dof.creator.department else 'Belirsiz' }}</strong> tarafından şu departmana atanması önerildi: <strong>{{ dof.department.name if dof.department else 'Henüz seçilmedi' }}</strong>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-group">
+                                {{ form.department.label(class="form-label") }} <span class="text-danger">*</span>
+                                {{ form.department(class="form-control select2" + (" is-invalid" if form.department.errors else "")) }}
+                                {% if form.department.errors %}
+                                    <div class="invalid-feedback">{{ form.department.errors[0] }}</div>
+                                {% endif %}
+                                <small class="form-text text-muted">Önerilen departmanı değiştirebilir veya aynı şekilde bırakabilirsiniz.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group mb-4">
+                {{ form.comment.label(class="form-label") }} <span class="text-danger">*</span>
+                {{ form.comment(class="form-control" + (" is-invalid" if form.comment.errors else ""), rows=3, placeholder="DÖF ile ilgili değerlendirmenizi yazınız") }}
+                {% if form.comment.errors %}
+                    <div class="invalid-feedback">{{ form.comment.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <input type="hidden" name="submit_action" id="submit_action" value="">
+            
+            <div class="row mt-5">
+                <div class="col-md-8 mx-auto d-flex justify-content-center gap-4">
+                    {% if dof.status in [3, 4] %}
+                        <!-- Sadece ATANDI veya DEVAM EDİYOR durumundaki DÖF'ler için departman değişikliği butonu göster -->
+                        <button type="button" class="btn btn-warning btn-lg px-5 py-3 action-btn" data-action="change_department" id="changeDeptBtn">
+                            <i class="fas fa-exchange-alt me-2"></i> Departmanı Değiştir
+                        </button>
+                    {% else %}
+                        <!-- Normal inceleme işlemi butonları -->
+                        <button type="button" class="btn btn-success btn-lg px-5 py-3 action-btn" data-action="approve" id="approveBtn">
+                            <i class="fas fa-check-circle me-2"></i> Onayla ve Ata
+                        </button>
+                        <button type="button" class="btn btn-warning btn-lg px-5 py-3 action-btn" data-action="new_dof" id="newDofBtn">
+                            <i class="fas fa-plus-circle me-2"></i> Yeni DÖF Açılsın
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Select2 başlat
+        $('.select2').select2({
+            theme: 'bootstrap4',
+            language: 'tr',
+            width: '100%'
+        });
+        
+        // ATANDI veya DEVAM EDİYOR durumundaki DÖF'ler için kontrol listesini gizle
+        var dofStatus = "{{ dof.status }}";
+        if (dofStatus === 3 || dofStatus === 4) {
+            $('#controlListCard').hide();
+        }
+        
+        // "Yeni DÖF Açılsın" butonuna tıklanıldığında
+        $('#newDofBtn').on('click', function() {
+            // Form doğrulama kontrolü - sadece yorum ve departman seçimi gerekli
+            var form = document.getElementById('qualityReviewForm');
+            
+            if (!form.comment.value || !form.department.value) {
+                alert('Lütfen yorum ve departman alanlarını doldurun!');
+                return false;
+            }
+            
+            // Kontrol listesi aşamasını atla
+            $('#submit_action').val('new_dof');
+            
+            // Butonu devre dışı bırak ve form gönder
+            $(this).prop('disabled', true);
+            form.submit();
+        });
+        
+        // "Departmanı Değiştir" butonuna tıklandığında
+        $('#changeDeptBtn').on('click', function() {
+            // Form doğrulama kontrolü - sadece departman seçimi gerekli
+            var form = document.getElementById('qualityReviewForm');
+            
+            if (!form.department.value) {
+                alert('Lütfen yeni departman seçiniz!');
+                return false;
+            }
+            
+            // Seçilen departman bilgisini al
+            var selectedDepartmentId = form.department.value;
+            var comment = form.comment.value || "Departman değişikliği";
+            var dofId = "{{ dof.id }}";
+            var csrf_token = form.csrf_token.value;
+            
+            // Butonu devre dışı bırak
+            $(this).prop('disabled', true);
+            $('#submit_action').val('change_department');
+            
+            // Kullanıcıya bilgi ver
+            $('#processingAlert').show();
+            
+            // AJAX ile departman değişikliği yap
+            $.ajax({
+                url: '/api/change_department',
+                type: 'POST',
+                data: {
+                    dof_id: dofId,
+                    department_id: selectedDepartmentId,
+                    comment: comment,
+                    csrf_token: csrf_token
+                },
+                success: function(response) {
+                    alert('Departman başarıyla değiştirildi!');
+                    window.location.href = '/dof/' + dofId;
+                },
+                error: function(xhr, status, error) {
+                    alert('Departman değiştirme işlemi sırasında bir hata oluştu: ' + error);
+                    $('#changeDeptBtn').prop('disabled', false);
+                    $('#processingAlert').hide();
+                }
+            });
+            
+            return false; // Formun normal gönderimini engelle
+        });
+        
+        // "Onayla ve Kapat" butonuna tıklandığında
+        $('#approveBtn').on('click', function() {
+            // Form doğrulama kontrolü
+            var form = document.getElementById('qualityReviewForm');
+            
+            // Tüm gerekli alanları kontrol et
+            if (!form.comment.value || !form.department.value) {
+                alert('Lütfen yorum ve departman alanlarını doldurun!');
+                return false;
+            }
+            
+            // Kontrol listesi kontrollerini kontrol et
+            var allChecked = true;
+            $('.check-item').each(function() {
+                if (!$(this).is(':checked')) {
+                    allChecked = false;
+                }
+            });
+            
+            if (!allChecked) {
+                alert('Lütfen tüm kontrol listesi maddelerini onaylayın!');
+                return false;
+            }
+            
+            // İşlem türünü hidden input'a ata
+            $('#submit_action').val('approve');
+            
+            // Butonu devre dışı bırak ve form gönder
+            $(this).prop('disabled', true);
+            form.submit();
+        });
+    });
+</script>
+{% endblock %}

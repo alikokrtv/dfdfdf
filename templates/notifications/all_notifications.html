@@ -1,0 +1,180 @@
+{% extends 'layout.html' %}
+
+{% block title %}Tüm Bildirimler{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">Tüm Bildirimler</h1>
+        <div>
+            <a href="{{ url_for('dof.dashboard') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Dashboard'a Dön
+            </a>
+            {% if unread_notifications %}
+            <a href="{{ url_for('notifications.mark_all_read') }}" class="btn btn-primary ms-2">
+                <i class="fas fa-check-double"></i> Tümünü Okundu İşaretle
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <ul class="nav nav-tabs card-header-tabs" id="notificationTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="all-tab" data-bs-toggle="tab" data-bs-target="#all-content" type="button" role="tab" aria-controls="all-content" aria-selected="true">
+                        Tüm Bildirimler <span class="badge bg-secondary ms-1">{{ notifications|length }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="unread-tab" data-bs-toggle="tab" data-bs-target="#unread-content" type="button" role="tab" aria-controls="unread-content" aria-selected="false">
+                        Okunmamış <span class="badge bg-primary ms-1">{{ unread_notifications|length }}</span>
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body">
+            <div class="tab-content" id="notificationTabsContent">
+                <div class="tab-pane fade show active" id="all-content" role="tabpanel" aria-labelledby="all-tab">
+                    {% if notifications %}
+                        <div class="list-group list-group-flush">
+                            {% for notification in notifications %}
+                            <div class="list-group-item list-group-item-action py-3 {% if not notification.is_read %}bg-light{% endif %}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        {% if not notification.is_read %}
+                                            <div class="position-absolute top-0 start-0 mt-2 ms-2">
+                                                <span class="badge rounded-pill bg-primary">Yeni</span>
+                                            </div>
+                                        {% endif %}
+                                        <div class="ms-3 mt-1">
+                                            <p class="mb-1">{{ notification.message }}</p>
+                                            {% if notification.dof_id %}
+                                            <div class="mt-2">
+                                                <a href="{{ url_for('dof.detail', dof_id=notification.dof_id) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i> DÖF'ü Görüntüle
+                                                </a>
+                                                {% if not notification.is_read %}
+                                                <a href="{{ url_for('notifications.mark_read', notification_id=notification.id) }}" class="btn btn-sm btn-outline-success ms-1">
+                                                    <i class="fas fa-check"></i> Okundu İşaretle
+                                                </a>
+                                                {% endif %}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="text-muted small">
+                                        {{ notification.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        {% if pagination %}
+                        <div class="mt-4 d-flex justify-content-center">
+                            <nav aria-label="Bildirim Sayfaları">
+                                <ul class="pagination">
+                                    {% if pagination.has_prev %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('notifications.all_notifications', page=pagination.prev_num) }}" aria-label="Önceki">
+                                            <span aria-hidden="true">&laquo;</span>
+                                        </a>
+                                    </li>
+                                    {% else %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link" aria-hidden="true">&laquo;</span>
+                                    </li>
+                                    {% endif %}
+                                    
+                                    {% for page_num in pagination.iter_pages(left_edge=2, left_current=2, right_current=3, right_edge=2) %}
+                                        {% if page_num %}
+                                            {% if page_num == pagination.page %}
+                                            <li class="page-item active">
+                                                <span class="page-link">{{ page_num }}</span>
+                                            </li>
+                                            {% else %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="{{ url_for('notifications.all_notifications', page=page_num) }}">{{ page_num }}</a>
+                                            </li>
+                                            {% endif %}
+                                        {% else %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">...</span>
+                                        </li>
+                                        {% endif %}
+                                    {% endfor %}
+                                    
+                                    {% if pagination.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('notifications.all_notifications', page=pagination.next_num) }}" aria-label="Sonraki">
+                                            <span aria-hidden="true">&raquo;</span>
+                                        </a>
+                                    </li>
+                                    {% else %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link" aria-hidden="true">&raquo;</span>
+                                    </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <div class="display-1 text-muted mb-3">
+                                <i class="far fa-bell-slash"></i>
+                            </div>
+                            <h3>Herhangi bir bildirim bulunmamaktadır</h3>
+                            <p class="text-muted">Yeni aktiviteler olduğunda buradan takip edebilirsiniz.</p>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Okunmamış Bildirimler Tab -->
+                <div class="tab-pane fade" id="unread-content" role="tabpanel" aria-labelledby="unread-tab">
+                    {% if unread_notifications %}
+                        <div class="list-group list-group-flush">
+                            {% for notification in unread_notifications %}
+                            <div class="list-group-item list-group-item-action py-3 bg-light">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="position-absolute top-0 start-0 mt-2 ms-2">
+                                            <span class="badge rounded-pill bg-primary">Yeni</span>
+                                        </div>
+                                        <div class="ms-3 mt-1">
+                                            <p class="mb-1">{{ notification.message }}</p>
+                                            {% if notification.dof_id %}
+                                            <div class="mt-2">
+                                                <a href="{{ url_for('dof.detail', dof_id=notification.dof_id) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i> DÖF'ü Görüntüle
+                                                </a>
+                                                <a href="{{ url_for('notifications.mark_read', notification_id=notification.id) }}" class="btn btn-sm btn-outline-success ms-1">
+                                                    <i class="fas fa-check"></i> Okundu İşaretle
+                                                </a>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="text-muted small">
+                                        {{ notification.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <div class="display-1 text-success mb-3">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <h3>Okunmamış bildiriminiz bulunmamaktadır</h3>
+                            <p class="text-muted">Tüm bildirimlerinizi okudunuz.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

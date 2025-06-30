@@ -1,0 +1,155 @@
+{% extends 'layout.html' %}
+
+{% block title %}E-Posta Ayarları{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">E-Posta Ayarları</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('admin.email_settings') }}">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.mail_service.label }}</label>
+                            {{ form.mail_service(class="form-select") }}
+                            {% if form.mail_service.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.mail_service.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div id="smtp-settings">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">{{ form.smtp_host.label }}</label>
+                                    {{ form.smtp_host(class="form-control") }}
+                                    {% if form.smtp_host.description %}
+                                        <small class="form-text text-muted">{{ form.smtp_host.description }}</small>
+                                    {% endif %}
+                                    {% if form.smtp_host.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.smtp_host.errors %}
+                                                {{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">{{ form.smtp_port.label }}</label>
+                                    {{ form.smtp_port(class="form-control") }}
+                                    {% if form.smtp_port.description %}
+                                        <small class="form-text text-muted">{{ form.smtp_port.description }}</small>
+                                    {% endif %}
+                                    {% if form.smtp_port.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.smtp_port.errors %}
+                                                {{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        {{ form.smtp_use_tls(class="form-check-input") }}
+                                        <label class="form-check-label">{{ form.smtp_use_tls.label }}</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        {{ form.smtp_use_ssl(class="form-check-input") }}
+                                        <label class="form-check-label">{{ form.smtp_use_ssl.label }}</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">{{ form.smtp_user.label }}</label>
+                                    {{ form.smtp_user(class="form-control") }}
+                                    {% if form.smtp_user.description %}
+                                        <small class="form-text text-muted">{{ form.smtp_user.description }}</small>
+                                    {% endif %}
+                                    {% if form.smtp_user.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.smtp_user.errors %}
+                                                {{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">{{ form.smtp_pass.label }}</label>
+                                    {{ form.smtp_pass(class="form-control") }}
+                                    {% if form.smtp_pass.description %}
+                                        <small class="form-text text-muted">{{ form.smtp_pass.description }}</small>
+                                    {% endif %}
+                                    <small class="form-text text-info">Gmail için lütfen geçerli bir Uygulama Şifresi kullanın.</small>
+                                    {% if form.smtp_pass.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.smtp_pass.errors %}
+                                                {{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.default_sender.label }}</label>
+                            {{ form.default_sender(class="form-control") }}
+                            {% if form.default_sender.description %}
+                                <small class="form-text text-muted">{{ form.default_sender.description }}</small>
+                            {% endif %}
+                            {% if form.default_sender.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.default_sender.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            {{ form.submit(class="btn btn-primary") }}
+                            <a href="{{ url_for('admin.test_email') }}" class="btn btn-info ms-2">Test E-postası Gönder</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const mailServiceSelect = document.getElementById('mail_service');
+    const smtpSettings = document.getElementById('smtp-settings');
+    
+    function toggleSmtpSettings() {
+        if (mailServiceSelect.value === 'smtp') {
+            smtpSettings.style.display = 'block';
+        } else {
+            smtpSettings.style.display = 'none';
+        }
+    }
+    
+    mailServiceSelect.addEventListener('change', toggleSmtpSettings);
+    
+    // İlk yükleme için ayarla
+    toggleSmtpSettings();
+});
+</script>
+{% endblock %}

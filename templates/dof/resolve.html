@@ -1,0 +1,229 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="container">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5>DÖF Çözüm Planı: {{ dof.title }}</h5>
+            <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-light">Geri Dön</a>
+        </div>
+        <div class="card-body">
+            <!-- DÖF Detay Bilgileri -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <h6 class="mb-2">DÖF Bilgileri</h6>
+                    <table class="table table-sm table-bordered">
+                        <tr>
+                            <th>Durum</th>
+                            <td>
+                                <span class="badge 
+                                    {% if dof.status == status.DRAFT %}bg-secondary
+                                    {% elif dof.status == status.SUBMITTED %}bg-info
+                                    {% elif dof.status == status.IN_REVIEW %}bg-primary
+                                    {% elif dof.status == status.ASSIGNED %}bg-warning
+                                    {% elif dof.status == status.IN_PROGRESS %}bg-info
+                                    {% elif dof.status == status.RESOLVED %}bg-success
+                                    {% elif dof.status == status.CLOSED %}bg-dark
+                                    {% elif dof.status == status.REJECTED %}bg-danger
+                                    {% endif %}">
+                                    {{ dof.status_name }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Başlık</th>
+                            <td>{{ dof.title }}</td>
+                        </tr>
+                        <tr>
+                            <th>Departman</th>
+                            <td>{{ dof.department.name if dof.department else '-' }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Açıklama -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h6 class="mb-2">Açıklama</h6>
+                    <div class="bg-light p-3 rounded">
+                        {{ dof.description|nl2br|safe }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Çözüm Formu -->
+            <form id="resolveForm" method="post" enctype="multipart/form-data">
+                {{ form.csrf_token }}
+                
+                <div class="card mb-4">
+                    <div class="card-header bg-light bg-opacity-75">
+                        <h6 class="mb-0 fw-bold text-primary">
+                            <i class="fas fa-search-plus me-2"></i>
+                            Kök Neden Analizi (5 Neden - İlk 3'ü zorunludur)
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.root_cause1.label(class="form-label") }} <span class="text-danger">*</span>
+                                    {{ form.root_cause1(class="form-control" + (" is-invalid" if form.root_cause1.errors else "")) }}
+                                    {% if form.root_cause1.errors %}
+                                        <div class="invalid-feedback">{{ form.root_cause1.errors[0] }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.root_cause2.label(class="form-label") }} <span class="text-danger">*</span>
+                                    {{ form.root_cause2(class="form-control" + (" is-invalid" if form.root_cause2.errors else "")) }}
+                                    {% if form.root_cause2.errors %}
+                                        <div class="invalid-feedback">{{ form.root_cause2.errors[0] }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.root_cause3.label(class="form-label") }} <span class="text-danger">*</span>
+                                    {{ form.root_cause3(class="form-control" + (" is-invalid" if form.root_cause3.errors else "")) }}
+                                    {% if form.root_cause3.errors %}
+                                        <div class="invalid-feedback">{{ form.root_cause3.errors[0] }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.root_cause4.label(class="form-label") }}
+                                    {{ form.root_cause4(class="form-control") }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.root_cause5.label(class="form-label") }}
+                                    {{ form.root_cause5(class="form-control") }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header bg-light bg-opacity-75">
+                        <h6 class="mb-0 fw-bold text-success">
+                            <i class="fas fa-tasks me-2"></i>
+                            Aksiyon Planı ve Termin
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <div class="form-group">
+                                    {{ form.action_plan.label(class="form-label") }} <span class="text-danger">*</span>
+                                    {{ form.action_plan(class="form-control" + (" is-invalid" if form.action_plan.errors else ""), rows=5) }}
+                                    {% if form.action_plan.errors %}
+                                        <div class="invalid-feedback">{{ form.action_plan.errors[0] }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group">
+                                    {{ form.deadline.label(class="form-label") }} <span class="text-danger">*</span>
+                                    {{ form.deadline(class="form-control" + (" is-invalid" if form.deadline.errors else ""), type="date", min=today_date, id="deadline") }}
+                                    {% if form.deadline.errors %}
+                                        <div class="invalid-feedback">{{ form.deadline.errors[0] }}</div>
+                                    {% else %}
+                                        <div class="form-text">Geçmiş tarihe termin girilemez</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    {{ form.comment.label(class="form-label") }}
+                    {{ form.comment(class="form-control", rows=3, placeholder="İsteğe bağlı açıklama ekleyebilirsiniz") }}
+                </div>
+
+                <div class="d-flex justify-content-end mt-4">
+                <button type="submit" class="btn btn-primary me-2" name="action" value="save" title="Bilgileri kaydet ve forma devam et">Kaydet</button>
+                <button type="submit" class="btn btn-success" name="action" value="complete" title="Bilgileri kaydet ve formu tamamla">Tamam</button>
+            </div>        </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Termin tarihi kontrolü
+    $('#deadline').on('change', function() {
+        var selectedDate = new Date($(this).val());
+        var today = new Date();
+        
+        // Saat bilgilerini sıfırla (sadece tarih karşılaştırması için)
+        today.setHours(0, 0, 0, 0);
+        
+        if (selectedDate < today) {
+            alert('Geçmiş tarih seçilemez! Lütfen bugün veya gelecek bir tarih seçin.');
+            $(this).val(''); // Tarihi temizle
+        }
+    });
+    
+    // Form doğrulama işlemi
+    $('#resolveForm').on('submit', function(e) {
+        var form = this;
+        var hasRequiredRoot = false;
+
+        // En az 3 kök neden girilmiş mi kontrol et
+        for (var i = 1; i <= 3; i++) {
+            if ($('#root_cause' + i).val().trim() !== '') {
+                hasRequiredRoot = true;
+                break;
+            }
+        }
+
+        if (!hasRequiredRoot) {
+            e.preventDefault();
+            alert('Lütfen en az 1 kök neden giriniz.');
+            return false;
+        }
+
+        // Aksiyon planı girilmiş mi kontrol et
+        if ($('#action_plan').val().trim() === '') {
+            e.preventDefault();
+            alert('Lütfen aksiyon planını belirtiniz.');
+            return false;
+        }
+        
+        // Termin tarihi kontrolü
+        var deadlineVal = $('#deadline').val();
+        if (!deadlineVal) {
+            e.preventDefault();
+            alert('Lütfen bir termin tarihi belirleyiniz.');
+            return false;
+        }
+        
+        var selectedDate = new Date(deadlineVal);
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (selectedDate < today) {
+            e.preventDefault();
+            alert('Geçmiş tarih seçilemez! Lütfen bugün veya gelecek bir tarih seçin.');
+            return false;
+        }
+    });
+});
+</script>
+{% endblock %}

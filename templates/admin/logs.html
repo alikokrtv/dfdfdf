@@ -1,0 +1,146 @@
+{% extends "layout.html" %}
+
+{% block title %}Sistem Logları - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">Sistem Logları</h1>
+    <div>
+        <button class="btn btn-outline-primary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i> Yazdır
+        </button>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Tarih & Saat</th>
+                        <th>Kullanıcı</th>
+                        <th>Eylem</th>
+                        <th>Detay</th>
+                        <th>IP Adresi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs.items %}
+                    <tr>
+                        <td>{{ log.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                        <td>
+                            {% if log.user %}
+                                {{ log.user.username }}
+                            {% else %}
+                                <span class="text-muted">Sistem</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.action }}</td>
+                        <td>{{ log.details|truncate(50) if log.details else "-" }}</td>
+                        <td>{{ log.ip_address }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Sayfalama -->
+        {% if logs.pages > 1 %}
+        <nav aria-label="Sayfalama">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if logs.page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('admin.logs', page=logs.prev_num) }}" aria-label="Önceki">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                
+                {% for page_num in logs.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == logs.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('admin.logs', page=page_num) }}">
+                                {{ page_num }}
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <li class="page-item {% if logs.page == logs.pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('admin.logs', page=logs.next_num) }}" aria-label="Sonraki">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Filtreleme -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Log Filtrele</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.logs') }}">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Eylem</label>
+                    <select class="form-control" name="action">
+                        <option value="">Tüm Eylemler</option>
+                        <option value="Giriş Yapıldı" {% if request.args.get('action') == 'Giriş Yapıldı' %}selected{% endif %}>Giriş Yapıldı</option>
+                        <option value="Çıkış Yapıldı" {% if request.args.get('action') == 'Çıkış Yapıldı' %}selected{% endif %}>Çıkış Yapıldı</option>
+                        <option value="DÖF Oluşturma" {% if request.args.get('action') == 'DÖF Oluşturma' %}selected{% endif %}>DÖF Oluşturma</option>
+                        <option value="DÖF Güncelleme" {% if request.args.get('action') == 'DÖF Güncelleme' %}selected{% endif %}>DÖF Güncelleme</option>
+                        <option value="DÖF Durum Değişikliği" {% if request.args.get('action') == 'DÖF Durum Değişikliği' %}selected{% endif %}>DÖF Durum Değişikliği</option>
+                        <option value="Kullanıcı Oluşturma" {% if request.args.get('action') == 'Kullanıcı Oluşturma' %}selected{% endif %}>Kullanıcı Oluşturma</option>
+                        <option value="Kullanıcı Güncelleme" {% if request.args.get('action') == 'Kullanıcı Güncelleme' %}selected{% endif %}>Kullanıcı Güncelleme</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Kullanıcı</label>
+                    <select class="form-control select2" name="user_id">
+                        <option value="">Tüm Kullanıcılar</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" {% if request.args.get('user_id')|int == user.id %}selected{% endif %}>{{ user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Başlangıç Tarihi</label>
+                    <input type="date" class="form-control" name="date_from" value="{{ request.args.get('date_from', '') }}">
+                </div>
+                
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Bitiş Tarihi</label>
+                    <input type="date" class="form-control" name="date_to" value="{{ request.args.get('date_to', '') }}">
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-end">
+                <a href="{{ url_for('admin.logs') }}" class="btn btn-secondary me-2">Sıfırla</a>
+                <button type="submit" class="btn btn-primary">Filtrele</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Select2 initalize
+        $('.select2').select2({
+            theme: 'bootstrap4',
+            language: 'tr',
+            width: '100%'
+        });
+    });
+</script>
+{% endblock %}

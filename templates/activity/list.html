@@ -1,0 +1,131 @@
+{% extends "layout.html" %}
+
+{% block title %}Kullanıcı Aktiviteleri{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Kullanıcı Aktiviteleri</h3>
+        </div>
+        <div class="card-body">
+            <!-- Filtreler -->
+            <form method="GET" class="mb-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="user_id" class="form-label">Kullanıcı</label>
+                        <select name="user_id" id="user_id" class="form-select">
+                            <option value="">Tümü</option>
+                            {% for user in users %}
+                                <option value="{{ user.id }}" {% if selected_user_id == user.id %}selected{% endif %}>
+                                    {{ user.fullname }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="activity_type" class="form-label">Aktivite Tipi</label>
+                        <select name="activity_type" id="activity_type" class="form-select">
+                            <option value="">Tümü</option>
+                            {% for type in activity_types %}
+                                <option value="{{ type }}" {% if selected_activity_type == type %}selected{% endif %}>
+                                    {{ type }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="date_from" class="form-label">Başlangıç Tarihi</label>
+                        <input type="date" name="date_from" id="date_from" class="form-control" value="{{ selected_date_from }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="date_to" class="form-label">Bitiş Tarihi</label>
+                        <input type="date" name="date_to" id="date_to" class="form-control" value="{{ selected_date_to }}">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">Filtrele</button>
+                        <a href="{{ url_for('activity.activity_list') }}" class="btn btn-secondary">Filtreleri Temizle</a>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Aktivite Tablosu -->
+            <div class="table-responsive">
+                <table class="table table-striped table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Kullanıcı</th>
+                            <th>Aktivite Tipi</th>
+                            <th>Açıklama</th>
+                            <th>İlgili ID</th>
+                            <th>IP Adresi</th>
+                            <th>Tarih/Saat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for activity in activities.items %}
+                        <tr>
+                            <td>{{ activity.id }}</td>
+                            <td>{{ activity.user.fullname }}</td>
+                            <td>{{ activity.activity_type }}</td>
+                            <td>{{ activity.description }}</td>
+                            <td>{{ activity.related_id }}</td>
+                            <td>{{ activity.ip_address }}</td>
+                            <td>{{ activity.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center">Aktivite bulunamadı</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Sayfalama -->
+            <nav aria-label="Sayfalama">
+                <ul class="pagination justify-content-center">
+                    {% if activities.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('activity.activity_list', page=activities.prev_num, user_id=selected_user_id, activity_type=selected_activity_type, date_from=selected_date_from, date_to=selected_date_to) }}">Önceki</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">Önceki</a>
+                        </li>
+                    {% endif %}
+
+                    {% for page_num in activities.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                        {% if page_num %}
+                            {% if activities.page == page_num %}
+                                <li class="page-item active">
+                                    <a class="page-link" href="#">{{ page_num }}</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('activity.activity_list', page=page_num, user_id=selected_user_id, activity_type=selected_activity_type, date_from=selected_date_from, date_to=selected_date_to) }}">{{ page_num }}</a>
+                                </li>
+                            {% endif %}
+                        {% else %}
+                            <li class="page-item disabled">
+                                <a class="page-link" href="#">...</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if activities.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('activity.activity_list', page=activities.next_num, user_id=selected_user_id, activity_type=selected_activity_type, date_from=selected_date_from, date_to=selected_date_to) }}">Sonraki</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">Sonraki</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}

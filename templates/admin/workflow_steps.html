@@ -1,0 +1,270 @@
+{% extends "layout.html" %}
+
+{% block title %}İş Akışı Adımları - DÖF Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">{{ workflow.name }} - İş Akışı Adımları</h1>
+    <div>
+        <a href="{{ url_for('admin.workflow') }}" class="btn btn-secondary me-2">
+            <i class="fas fa-arrow-left me-1"></i> İş Akışlarına Dön
+        </a>
+        <a href="{{ url_for('admin.create_workflow_step', workflow_id=workflow.id) }}" class="btn btn-primary">
+            <i class="fas fa-plus-circle me-1"></i> Yeni Adım Ekle
+        </a>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">İş Akışı Bilgileri</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <p class="mb-1"><strong>İş Akışı Adı:</strong> {{ workflow.name }}</p>
+            </div>
+            <div class="col-md-4">
+                <p class="mb-1"><strong>Durum:</strong> 
+                    {% if workflow.is_active %}
+                        <span class="badge bg-success">Aktif</span>
+                    {% else %}
+                        <span class="badge bg-danger">Pasif</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="col-md-4">
+                <p class="mb-1"><strong>Oluşturulma Tarihi:</strong> {{ workflow.created_at.strftime('%d.%m.%Y') }}</p>
+            </div>
+        </div>
+        {% if workflow.description %}
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <p class="mb-1"><strong>Açıklama:</strong></p>
+                <p>{{ workflow.description }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">İş Akışı Adımları</h5>
+    </div>
+    <div class="card-body">
+        {% if steps %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Sıra</th>
+                        <th>Adım Adı</th>
+                        <th>Rol</th>
+                        <th>Başlangıç Durumu</th>
+                        <th>Hedef Durum</th>
+                        <th>Durum</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for step in steps %}
+                    <tr>
+                        <td>{{ step.step_order }}</td>
+                        <td>{{ step.name }}</td>
+                        <td>
+                            {% if step.required_role == 1 %}
+                                <span class="badge bg-danger">Yönetici</span>
+                            {% elif step.required_role == 2 %}
+                                <span class="badge bg-primary">Kalite Yöneticisi</span>
+                            {% elif step.required_role == 3 %}
+                                <span class="badge bg-info">Departman Yöneticisi</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Kullanıcı</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if step.from_status == 0 %}
+                                <span class="badge bg-secondary">Taslak</span>
+                            {% elif step.from_status == 1 %}
+                                <span class="badge bg-info">Gönderildi</span>
+                            {% elif step.from_status == 2 %}
+                                <span class="badge bg-primary">İncelemede</span>
+                            {% elif step.from_status == 3 %}
+                                <span class="badge bg-info">Atandı</span>
+                            {% elif step.from_status == 4 %}
+                                <span class="badge bg-warning">Devam Ediyor</span>
+                            {% elif step.from_status == 5 %}
+                                <span class="badge bg-success">Çözüldü</span>
+                            {% elif step.from_status == 6 %}
+                                <span class="badge bg-dark">Kapatıldı</span>
+                            {% elif step.from_status == 7 %}
+                                <span class="badge bg-danger">Reddedildi</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if step.to_status == 0 %}
+                                <span class="badge bg-secondary">Taslak</span>
+                            {% elif step.to_status == 1 %}
+                                <span class="badge bg-info">Gönderildi</span>
+                            {% elif step.to_status == 2 %}
+                                <span class="badge bg-primary">İncelemede</span>
+                            {% elif step.to_status == 3 %}
+                                <span class="badge bg-info">Atandı</span>
+                            {% elif step.to_status == 4 %}
+                                <span class="badge bg-warning">Devam Ediyor</span>
+                            {% elif step.to_status == 5 %}
+                                <span class="badge bg-success">Çözüldü</span>
+                            {% elif step.to_status == 6 %}
+                                <span class="badge bg-dark">Kapatıldı</span>
+                            {% elif step.to_status == 7 %}
+                                <span class="badge bg-danger">Reddedildi</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if step.is_active %}
+                                <span class="badge bg-success">Aktif</span>
+                            {% else %}
+                                <span class="badge bg-danger">Pasif</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('admin.edit_workflow_step', workflow_id=workflow.id, step_id=step.id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Düzenle">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i> Bu iş akışı için henüz adım tanımlanmamış.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if steps %}
+<div class="mt-4">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">İş Akışı Diyagramı</h5>
+        </div>
+        <div class="card-body text-center">
+            <div class="workflow-diagram">
+                {% for step in steps %}
+                <div class="workflow-step">
+                    <div class="step-status">
+                        {% if step.from_status == 0 %}
+                            <div class="badge bg-secondary p-2">Taslak</div>
+                        {% elif step.from_status == 1 %}
+                            <div class="badge bg-info p-2">Gönderildi</div>
+                        {% elif step.from_status == 2 %}
+                            <div class="badge bg-primary p-2">İncelemede</div>
+                        {% elif step.from_status == 3 %}
+                            <div class="badge bg-info p-2">Atandı</div>
+                        {% elif step.from_status == 4 %}
+                            <div class="badge bg-warning p-2">Devam Ediyor</div>
+                        {% elif step.from_status == 5 %}
+                            <div class="badge bg-success p-2">Çözüldü</div>
+                        {% elif step.from_status == 6 %}
+                            <div class="badge bg-dark p-2">Kapatıldı</div>
+                        {% elif step.from_status == 7 %}
+                            <div class="badge bg-danger p-2">Reddedildi</div>
+                        {% endif %}
+                    </div>
+                    <div class="step-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                    <div class="step-status">
+                        {% if step.to_status == 0 %}
+                            <div class="badge bg-secondary p-2">Taslak</div>
+                        {% elif step.to_status == 1 %}
+                            <div class="badge bg-info p-2">Gönderildi</div>
+                        {% elif step.to_status == 2 %}
+                            <div class="badge bg-primary p-2">İncelemede</div>
+                        {% elif step.to_status == 3 %}
+                            <div class="badge bg-info p-2">Atandı</div>
+                        {% elif step.to_status == 4 %}
+                            <div class="badge bg-warning p-2">Devam Ediyor</div>
+                        {% elif step.to_status == 5 %}
+                            <div class="badge bg-success p-2">Çözüldü</div>
+                        {% elif step.to_status == 6 %}
+                            <div class="badge bg-dark p-2">Kapatıldı</div>
+                        {% elif step.to_status == 7 %}
+                            <div class="badge bg-danger p-2">Reddedildi</div>
+                        {% endif %}
+                    </div>
+                    <div class="step-role">
+                        <small>
+                            {% if step.required_role == 1 %}
+                                <span class="text-danger">Yönetici</span>
+                            {% elif step.required_role == 2 %}
+                                <span class="text-primary">Kalite Yöneticisi</span>
+                            {% elif step.required_role == 3 %}
+                                <span class="text-info">Departman Yöneticisi</span>
+                            {% else %}
+                                <span class="text-secondary">Kullanıcı</span>
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+                {% if not loop.last %}
+                <div class="workflow-connector">
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Tooltips
+        $('[data-bs-toggle="tooltip"]').tooltip();
+    });
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .workflow-diagram {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .workflow-step {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .step-status {
+        text-align: center;
+        min-width: 120px;
+    }
+    
+    .step-arrow {
+        margin: 0 15px;
+        color: var(--bs-primary);
+    }
+    
+    .step-role {
+        margin-left: 20px;
+        min-width: 100px;
+    }
+    
+    .workflow-connector {
+        color: var(--bs-secondary);
+        margin: 5px 0;
+    }
+</style>
+{% endblock %}

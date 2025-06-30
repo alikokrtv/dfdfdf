@@ -1,0 +1,1842 @@
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, current_app, abort
+from flask_login import login_required, current_user
+from sqlalchemy import or_
+from datetime import datetime, timedelta
+from app import db
+from models import DOF, DOFAction, Attachment, Department, User, DOFStatus, UserRole, Notification, UserActivity
+from forms import DOFForm, DOFActionForm, SearchForm, DOFResolveForm, QualityReviewForm, QualityClosureForm
+from utils import allowed_file, save_file, log_activity, notify_for_dof, get_dof_status_counts, can_user_edit_dof, can_user_change_status, send_email_async, optimize_db_operations
+import os
+import time
+
+# DÖF oluşturma işlemi tamamlandıktan sonra doğrudan kalite yöneticilerine bildirim gönder
+def send_direct_notifications_to_quality_managers(dof_id, creator_name, dof_title):
+    current_app.logger.info(f"Doğrudan bildirim sistemi çalışıyor (DÖF #{dof_id})")
+    try:
+        # DÖF kontrolü
+        dof = DOF.query.get(dof_id)
+        if not dof:
+            current_app.logger.error(f"DÖF bulunamadı: {dof_id}")
+            return False
+            
+        # Kalite yöneticilerini bul - UserRole.QUALITY_MANAGER kullanarak
+        quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER, active=True).all()
+        current_app.logger.info(f"{len(quality_managers)} kalite yöneticisi bulundu")
+        
+        # Her kalite yöneticisine bildirim gönder
+        notification_count = 0
+        for qm in quality_managers:
+            try:
+                # Bildirim oluştur
+                notification = Notification(
+                    user_id=qm.id,
+                    dof_id=dof_id,
+                    message=f"{creator_name} tarafından '{dof_title}' (#{dof_id}) başlıklı yeni bir DÖF oluşturuldu.",
+                    created_at=datetime.now(),
+                    is_read=False
+                )
+                db.session.add(notification)
+                current_app.logger.info(f"Kalite yöneticisi {qm.username} için bildirim oluşturuldu")
+                notification_count += 1
+            except Exception as e:
+                current_app.logger.error(f"Bildirim oluşturma hatası ({qm.username}): {str(e)}")
+        
+        # Veritabanına kaydet
+        if notification_count > 0:
+            db.session.commit()
+            current_app.logger.info(f"Toplam {notification_count} bildirim veritabanına kaydedildi")
+            return True
+        
+        return False
+    except Exception as e:
+        current_app.logger.error(f"Bildirim sistemi genel hatası: {str(e)}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return False
+
+dof_bp = Blueprint('dof', __name__)
+
+@dof_bp.route('/dof/<int:dof_id>/review', methods=['GET', 'POST'])
+@login_required
+def review_dof(dof_id):
+    """
+    DÖF'nin kalite yöneticisi tarafından değerlendirilmesi
+    """
+    # DÖF'yi getir
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Yetki kontrolü: Sadece kalite yöneticileri ve adminler erişebilir
+    if current_user.role not in [UserRole.QUALITY_MANAGER, UserRole.ADMIN]:
+        flash('Bu sayfaya erişim yetkiniz yok.', 'danger')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # Değerlendirilebilecek DÖF durumlarını kontrol et
+    if dof.status not in [DOFStatus.DRAFT, DOFStatus.SUBMITTED, DOFStatus.IN_REVIEW, DOFStatus.PLANNING, DOFStatus.RESOLVED]:
+        flash('Sadece TASLAK, GÖNDERİLDİ, İNCELEMEDE, PLANLAMA veya ÇÖZÜLDÜ durumundaki DÖFler değerlendirilebilir.', 'warning')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # Form hazırlığı
+    form = QualityReviewForm()
+    # Departman seçenekleri - kendi departmanı hariç tüm departmanlar
+    source_dept_id = dof.creator.department_id
+    form.department.choices = [(dept.id, dept.name) for dept in Department.query.filter(Department.id != source_dept_id).all()]
+    
+    # Form gönderildiğinde
+    if request.method == 'POST':
+        current_app.logger.info(f"DÖF inceleme formu gönderildi: {request.form}")
+        
+        # Form işleme - gerekli kontroller
+        if 'submit_action' not in request.form:
+            flash("Lütfen bir işlem seçin (Onayla ve Ata, Reddet veya Yeni DÖF Açılsın).", "danger")
+            return render_template('dof/quality_review.html', form=form, dof=dof)
+        
+        # JavaScript validation geçemezse bile server-side doğrulamaları yap
+        submit_action = request.form.get('submit_action', None)
+        
+        # "Yeni DÖF açılsın" seçildiyse kontrol kutucukları gerekli değil
+        if submit_action == 'new_dof':
+            # Bu durumda kutucukları kontrol etmeden devam et
+            pass
+        else:
+            # Diğer seçenekler için gerekli checkbox'ların doldurulduğunu kontrol et
+            required_checks = ['check_fields', 'check_priority', 'check_department', 'check_type']
+            missing_checks = [check for check in required_checks if check not in request.form]
+            
+            # Eğer eksik checkbox varsa, hata ver
+            if missing_checks:
+                flash("Lütfen tüm kontrol listesini doldurunuz.", "danger")
+                return render_template('dof/quality_review.html', form=form, dof=dof)
+        
+        # Form doğrulaması (WTForms)
+        if form.validate():
+            # İşlem başlamadan önce kullanıcıya geri bildirim
+            flash("İşlem yapılıyor...", "info")
+            
+            # Veritabanı işlemi
+            try:
+                # İşlem için değişkenler
+                old_status = dof.status
+                submit_action = request.form.get('submit_action', None)
+                action_message = ""
+                new_status = None
+                success_message = ""
+                log_action = ""
+                log_details = ""
+                
+                # İşlem türüne göre işlem yap
+                if submit_action == 'approve':
+                    # PLANNING durumundaki DÖF için ayrı işlem - kalite planı incelemesi
+                    if dof.status == DOFStatus.PLANNING:
+                        if 'approve_plan' in request.form:
+                            # Kök neden ve aksiyon planı uygun bulundu, Uygulama aşamasına geç
+                            dof.status = DOFStatus.IMPLEMENTATION
+                            dof.review_comment = form.comment.data
+                            flash("Kök neden ve aksiyon planı onaylanarak DÖF uygulama aşamasına geçti.", "success")
+                            
+                            # Bildirim gönder
+                            notification = Notification(
+                                user_id=dof.created_by,
+                                dof_id=dof.id,
+                                message=f"DÖF #{dof.id} kök neden ve aksiyon planı onaylanarak uygulama aşamasına geçti."
+                            )
+                            db.session.add(notification)
+                            
+                            # Aksiyon kaydı için bilgiler
+                            action_message = f"Kök neden ve aksiyon planı onaylanarak uygulama aşamasına geçildi: {form.comment.data}"
+                            new_status = DOFStatus.IMPLEMENTATION
+                            success_message = "Kök neden ve aksiyon planı onaylanıp uygulama aşamasına geçildi."
+                            log_action = "DÖF Plan Onayı"
+                            log_details = f"DÖF #{dof.id} uygulama aşamasına geçti."
+                        elif 'request_changes' in request.form:
+                            # Düzeltme talep edildi
+                            dof.status = DOFStatus.ASSIGNED
+                            dof.review_comment = form.comment.data
+                            flash("Kök neden ve aksiyon planı için düzeltme talep edildi.", "warning")
+                            
+                            # Bildirim gönder
+                            notification = Notification(
+                                user_id=dof.created_by,
+                                dof_id=dof.id,
+                                message=f"DÖF #{dof.id} için kök neden ve aksiyon planında düzenlemeler talep edildi."
+                            )
+                            db.session.add(notification)
+                            
+                            # Aksiyon kaydı için bilgiler 
+                            action_message = f"Kök neden ve aksiyon planında düzenlemeler talep edildi: {form.comment.data}"
+                            new_status = DOFStatus.ASSIGNED
+                            success_message = "Kök neden ve aksiyon planında düzenlemeler talep edildi."
+                            log_action = "DÖF Plan Düzeltme Talebi"
+                            log_details = f"DÖF #{dof.id} için plan düzenleme talep edildi."
+                    else:
+                        # Normal ilk inceleme işlemi - eski akış
+                        # Departman kontrolü
+                        department = Department.query.get(form.department.data)
+                        if not department:
+                            flash("Seçilen departman bulunamadı!", "danger")
+                            return render_template('dof/quality_review.html', form=form, dof=dof)
+                        
+                        # DÖF bilgilerini güncelle
+                        dof.status = DOFStatus.ASSIGNED  # Departman Yanıtı Bekleniyor durumu
+                        dof.department_id = department.id
+                        dof.review_comment = form.comment.data
+                        dof.assigned_to = None  # Atanan kişiyi temizle - artık departman bazlı çalışıyoruz
+                    
+                    # Bildirim gönder
+                    notification = Notification(
+                        user_id=dof.created_by,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} incelendi ve onaylandı. {department.name} departmanına atandı."
+                    )
+                    db.session.add(notification)
+                    
+                    # Departman yöneticilerine bildirim gönder
+                    managers = User.query.filter_by(department_id=department.id, role=UserRole.DEPARTMENT_MANAGER).all()
+                    for manager in managers:
+                        notification = Notification(
+                            user_id=manager.id,
+                            dof_id=dof.id,
+                            message=f"Departmanınıza yeni bir DÖF atandı: #{dof.id}. Lütfen kök neden analizi ve aksiyon planı giriniz."
+                        )
+                        db.session.add(notification)
+                    
+                    # Aksiyon kaydı için bilgiler
+                    action_message = f"Kalite değerlendirmesi yapıldı: {form.comment.data}"
+                    new_status = DOFStatus.ASSIGNED
+                    success_message = f"DÖF onaylandı ve {department.name} departmanına atandı."
+                    log_action = "DÖF Değerlendirme"
+                    log_details = f"DÖF #{dof.id} incelendi ve {department.name} departmanına atandı."
+                
+                # Reddetme işlemi
+                elif submit_action == 'reject':
+                    dof.status = DOFStatus.REJECTED
+                    dof.review_comment = form.comment.data
+                    
+                    # Bildirim gönder
+                    notification = Notification(
+                        user_id=dof.created_by,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} değerlendirme sonucu reddedildi. Detaylar için DÖF detayını inceleyiniz."
+                    )
+                    db.session.add(notification)
+                    
+                    # Aksiyon kaydı için bilgiler
+                    action_message = f"DÖF reddedildi: {form.comment.data}"
+                    new_status = DOFStatus.REJECTED
+                    success_message = "DÖF reddedildi ve ilgili kişilere bildirim gönderildi."
+                    log_action = "DÖF Reddetme"
+                    log_details = f"DÖF #{dof.id} reddedildi."
+                
+                # Yeni DÖF açma talebi
+                elif submit_action == 'new_dof':
+                    # Mevcut DÖF'e özel bir durum ekle ve kapat
+                    dof.status = DOFStatus.CLOSED
+                    dof.review_comment = form.comment.data + "\n\nYeni DÖF açılması talep edildi."
+                    
+                    # DÖF oluşturucuya bildirim gönder
+                    notification = Notification(
+                        user_id=dof.created_by,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} için yeni bir DÖF açılması talep edildi. Lütfen ilgili konular için yeni DÖF açınız."
+                    )
+                    db.session.add(notification)
+                    
+                    try:
+                        # İlişkili yeni DÖF oluştur (eski DÖF'e referans vererek)
+                        new_dof = DOF(
+                            title=f"[İlişkili #{dof.id}] {dof.title}",
+                            description=f"Bu DÖF, #{dof.id} numaralı DÖF'e bağlı olarak oluşturulmuştur.\n\nNot: {form.comment.data}\n\nOrijinal DÖF Açıklaması:\n{dof.description}",
+                            dof_type=dof.dof_type,
+                            dof_source=dof.dof_source,
+                            priority=dof.priority,
+                            department_id=dof.department_id,
+                            status=DOFStatus.IN_REVIEW,  # Hemen inceleme durumuna al
+                            created_by=current_user.id,  # Kalite yöneticisi oluşturuyor
+                            created_at=datetime.now()
+                        )
+                        
+                        db.session.add(new_dof)
+                        db.session.flush()  # ID oluşturmak için flush yap
+                        
+                        # Yeni DÖF için bir aksiyon kaydı ekle
+                        action = DOFAction(
+                            dof_id=new_dof.id,
+                            user_id=current_user.id,
+                            action_type=1,  # 1: Oluşturma
+                            comment="Mevcut DÖF'e bağlı olarak yeni DÖF oluşturuldu",
+                            created_at=datetime.now()
+                        )
+                        db.session.add(action)
+                        
+                        # Kalite yöneticilerine bildirim gönder
+                        quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER).all()
+                        for qm in quality_managers:
+                            if qm.id != current_user.id:  # Kendine bildirim gönderme
+                                notification = Notification(
+                                    user_id=qm.id,
+                                    dof_id=new_dof.id,
+                                    message=f"{current_user.full_name} tarafından '{new_dof.title}' başlıklı yeni bir DÖF oluşturuldu."
+                                )
+                                db.session.add(notification)
+                        
+                        success_message = f"DÖF kapatıldı ve #{new_dof.id} numaralı yeni DÖF oluşturuldu."
+                    except Exception as e:
+                        current_app.logger.error(f"Yeni DÖF oluşturma hatası: {str(e)}")
+                        success_message = "DÖF kapatıldı, ancak ilişkili yeni DÖF oluşturulurken bir hata oluştu."
+                        import traceback
+                        current_app.logger.error(traceback.format_exc())
+                    
+                    # Aksiyon kaydı için bilgiler
+                    action_message = f"Yeni DÖF açılması talep edildi: {form.comment.data}"
+                    new_status = DOFStatus.CLOSED
+                    success_message = "DÖF kapatıldı ve yeni DÖF açılması talep edildi."
+                    log_action = "DÖF Kapatma"
+                    log_details = f"DÖF #{dof.id} kapatıldı, yeni DÖF açılması talep edildi."
+                
+                # Form dolduruldu ancak desteklenmeyen bir buton kullanıldı
+                else:
+                    flash("Desteklenmeyen işlem tipi. Lütfen doğru işlemi seçin.", "warning")
+                    return render_template('dof/quality_review.html', form=form, dof=dof)
+                
+                # Aksiyon geçmişine kaydet
+                action = DOFAction(
+                    dof_id=dof.id,
+                    user_id=current_user.id,
+                    action_type=2,  # Durum değişikliği
+                    comment=action_message,
+                    old_status=old_status,
+                    new_status=new_status
+                )
+                db.session.add(action)
+                
+                # Aktivite log kaydı
+                log_activity(
+                    user_id=current_user.id,
+                    action=log_action,
+                    details=log_details,
+                    ip_address=request.remote_addr,
+                    user_agent=request.user_agent.string
+                )
+                
+                # Veritabanı işlemini kaydet
+                db.session.commit()
+                
+                # Başarılı işlem mesajı
+                flash(success_message, "success" if new_status == DOFStatus.ASSIGNED else "warning")
+                
+                # Başarılı işlem sonrası yönlendirme
+                return redirect(url_for('dof.detail', dof_id=dof_id))
+            
+            except Exception as e:
+                # Hata durumunda işlemi geri al ve hata mesajı göster
+                db.session.rollback()
+                current_app.logger.error(f"DÖF inceleme işleminde hata: {str(e)}")
+                flash(f"DÖF inceleme işlemi sırasında bir hata oluştu. Sistem yöneticisine bildirin.", "danger")
+                
+                # Detaylı hata günlüğü
+                import traceback
+                current_app.logger.error(f"Hata ayrıntıları: {traceback.format_exc()}")
+                
+                return render_template('dof/quality_review.html', form=form, dof=dof)
+        else:
+            # Form doğrulanamadı, hata mesajları gösteriliyor
+            flash("Form doğrulanmadı. Lütfen zorunlu alanları kontrol ediniz.", "danger")
+    
+    # GET isteği veya başarısız POST sonrası form gösterimi
+    return render_template('dof/quality_review.html', form=form, dof=dof)
+
+@dof_bp.route('/dashboard')
+@login_required
+def dashboard():
+    # Kullanıcı aktivitelerini yükle
+    
+    # Kullanıcının departmanına göre DÖF durum sayılarını al
+    # Eğer admin veya kalite yöneticisi ise tüm DÖF'leri görecek
+    # diğer durumda sadece kendi departmanı ile ilgili olanları görecek
+    if current_user.role in [UserRole.ADMIN, UserRole.QUALITY_MANAGER]:
+        status_counts = get_dof_status_counts()
+    elif current_user.department_id:
+        status_counts = get_dof_status_counts(current_user.department_id)
+    else:
+        status_counts = get_dof_status_counts()
+    
+    # Kalite departmanı için özel sayaçlar
+    # İnceleme bekleyen DÖF'ler hem SUBMITTED hem de IN_REVIEW durumundaki DÖF'leri içerir
+    waiting_review_count = DOF.query.filter(DOF.status.in_([DOFStatus.SUBMITTED, DOFStatus.IN_REVIEW])).count()
+    waiting_resolution_count = DOF.query.filter_by(status=DOFStatus.ASSIGNED).count()
+    
+    # Son eklenen 5 DÖF (genel kategorisi)
+    recent_dofs = DOF.query.order_by(DOF.created_at.desc()).limit(5).all()
+    
+    # Kullanıcıya atanan DÖF'ler
+    assigned_dofs = DOF.query.filter_by(assigned_to=current_user.id)\
+                     .filter(DOF.status != DOFStatus.CLOSED)\
+                     .order_by(DOF.created_at.desc()).limit(5).all()
+    
+    # Kullanıcının yönettiği departmanları belirle
+    user_departments = []
+    managed_dept_ids = []
+    
+    # Kullanıcının rolüne göre yönettiği departmanları getir
+    if current_user.role == UserRole.ADMIN:
+        # Admin tüm departmanları görebilir
+        user_departments = Department.query.filter_by(is_active=True).all()
+        managed_dept_ids = [dept.id for dept in user_departments]
+        
+    elif current_user.role == UserRole.DEPARTMENT_MANAGER:
+        # Departman yöneticisi sadece kendi departmanını görür
+        if current_user.department_id:
+            dept = Department.query.get(current_user.department_id)
+            user_departments = [dept]
+            managed_dept_ids = [dept.id]
+                
+    elif current_user.role == UserRole.GROUP_MANAGER:
+        # Grup yöneticisi, grup içindeki tüm departmanları görür
+        user_departments = current_user.get_managed_departments()
+        managed_dept_ids = [dept.id for dept in user_departments]
+        
+    else:
+        # Normal kullanıcı sadece kendi departmanını görür
+        if current_user.department_id:
+            dept = Department.query.get(current_user.department_id)
+            if dept:
+                user_departments = [dept]
+                managed_dept_ids = [current_user.department_id]
+    
+    print(f"Kullanıcı: {current_user.username}, Yönettiği departmanlar: {[dept.name for dept in user_departments]}")
+    
+    # Departmanların açtığı DÖF'ler
+    dept_created_dofs = []
+    if managed_dept_ids:
+        dept_created_query = DOF.query.join(User, DOF.created_by == User.id)\
+                                .filter(User.department_id.in_(managed_dept_ids))\
+                                .filter(DOF.status != DOFStatus.CLOSED)\
+                                .order_by(DOF.created_at.desc()).limit(5)
+        dept_created_dofs = dept_created_query.all()
+    
+    # Departmanlara atanan DÖF'ler
+    dept_assigned_dofs = []
+    if managed_dept_ids:
+        dept_assigned_dofs = DOF.query.filter(DOF.department_id.in_(managed_dept_ids))\
+                              .filter(DOF.status != DOFStatus.CLOSED)\
+                              .order_by(DOF.created_at.desc()).limit(5).all()
+    
+    # Eski yöntem - department_dofs
+    department_dofs = []
+    if current_user.role == UserRole.DEPARTMENT_MANAGER and current_user.department_id:
+        department_dofs = DOF.query.filter_by(department_id=current_user.department_id).filter(DOF.status != DOFStatus.CLOSED).order_by(DOF.created_at.desc()).limit(5).all()
+    
+    # Okunmamış bildirimler
+    unread_notifications = current_user.notifications.filter_by(is_read=False).order_by(Notification.created_at.desc()).limit(5).all()
+    
+    # Admin ve kalite yöneticileri için kullanıcı aktiviteleri
+    user_activities = []
+    system_logs = []
+    
+    if current_user.is_admin() or current_user.is_quality_manager():
+        # User bilgisini de sorguya ekleyerek eager loading ile daha verimli bir sorgu yapılandırıyoruz
+        from sqlalchemy.orm import joinedload
+        user_activities = UserActivity.query.options(joinedload(UserActivity.user))\
+                                      .order_by(UserActivity.created_at.desc())\
+                                      .limit(10)\
+                                      .all()
+        
+        # Aktivite olup olmadığını loglama
+        if not user_activities:
+            current_app.logger.warning(f"Dikkat: Kullanıcı {current_user.id} için aktivite bulunamadı! Bu bir soruna işaret edebilir.")
+        else:
+            current_app.logger.info(f"Bilgi: {len(user_activities)} aktivite bulundu ve dashboard'a yükleniyor.")
+        
+        # Sadece admin için sistem logları
+        if current_user.is_admin():
+            from models import SystemLog
+            system_logs = SystemLog.query.order_by(SystemLog.created_at.desc()).limit(5).all()
+    
+    # Tarihe göre terminleri ayırma
+    # Yerel sistem saatini kullan
+    current_date = datetime.now()
+    future_date = current_date + timedelta(days=30)  # Önümüzdeki 30 gün
+    
+    # Departman filtresi için hazırlık
+    user_dept_id = current_user.department_id if current_user.department_id else None
+    
+    # Departmanıma atanan yaklaşan terminler
+    assigned_upcoming_deadlines = []
+    if user_dept_id:
+        assigned_upcoming_deadlines = DOF.query.filter(
+            DOF.deadline.isnot(None),
+            DOF.deadline > current_date,
+            DOF.deadline <= future_date,
+            DOF.department_id == user_dept_id,
+            DOF.status.in_([DOFStatus.ASSIGNED, DOFStatus.IN_PROGRESS, DOFStatus.PLANNING, DOFStatus.IMPLEMENTATION])
+        ).order_by(DOF.deadline.asc()).limit(5).all()
+    
+    # Departmanımın açtığı yaklaşan terminler
+    created_upcoming_deadlines = []
+    if user_dept_id:
+        # Departman üyelerini bul
+        dept_user_ids = [user.id for user in User.query.filter_by(department_id=user_dept_id).all()]
+        if dept_user_ids:
+            created_upcoming_deadlines = DOF.query.filter(
+                DOF.deadline.isnot(None),
+                DOF.deadline > current_date,
+                DOF.deadline <= future_date,
+                DOF.created_by.in_(dept_user_ids),
+                DOF.status.in_([DOFStatus.ASSIGNED, DOFStatus.IN_PROGRESS, DOFStatus.PLANNING, DOFStatus.IMPLEMENTATION])
+            ).order_by(DOF.deadline.asc()).limit(5).all()
+    
+    # Departmanıma atanan geçmiş terminler
+    assigned_overdue_deadlines = []
+    if user_dept_id:
+        assigned_overdue_deadlines = DOF.query.filter(
+            DOF.deadline.isnot(None),
+            DOF.deadline <= current_date,
+            DOF.department_id == user_dept_id,
+            DOF.status.in_([DOFStatus.ASSIGNED, DOFStatus.IN_PROGRESS, DOFStatus.PLANNING, DOFStatus.IMPLEMENTATION])
+        ).order_by(DOF.deadline.desc()).limit(5).all()
+    
+    # Departmanımın açtığı geçmiş terminler
+    created_overdue_deadlines = []
+    if user_dept_id:
+        # Departman üyelerini bul
+        dept_user_ids = [user.id for user in User.query.filter_by(department_id=user_dept_id).all()]
+        if dept_user_ids:
+            created_overdue_deadlines = DOF.query.filter(
+                DOF.deadline.isnot(None),
+                DOF.deadline <= current_date,
+                DOF.created_by.in_(dept_user_ids),
+                DOF.status.in_([DOFStatus.ASSIGNED, DOFStatus.IN_PROGRESS, DOFStatus.PLANNING, DOFStatus.IMPLEMENTATION])
+            ).order_by(DOF.deadline.desc()).limit(5).all()
+    
+    # Geriye uyumluluk için eski değişkenler
+    upcoming_deadlines = assigned_upcoming_deadlines + created_upcoming_deadlines
+    past_deadlines = assigned_overdue_deadlines + created_overdue_deadlines
+    
+    return render_template('dashboard.html', 
+                           status_counts=status_counts,
+                           recent_dofs=recent_dofs,
+                           assigned_dofs=assigned_dofs,
+                           department_dofs=department_dofs, 
+                           dept_created_dofs=dept_created_dofs,
+                           waiting_review_count=waiting_review_count,
+                           waiting_resolution_count=waiting_resolution_count,
+                           dept_assigned_dofs=dept_assigned_dofs,
+                           notifications=unread_notifications,
+                           user_activities=user_activities,
+                           system_logs=system_logs,
+                           # Tarih değişkeni
+                           current_date=current_date,
+                           # Geriye uyumluluk için eski değişkenler
+                           upcoming_deadlines=upcoming_deadlines,
+                           past_deadlines=past_deadlines,
+                           # Yeni departman bazlı termin değişkenleri
+                           assigned_upcoming_deadlines=assigned_upcoming_deadlines,
+                           created_upcoming_deadlines=created_upcoming_deadlines,
+                           assigned_overdue_deadlines=assigned_overdue_deadlines,
+                           created_overdue_deadlines=created_overdue_deadlines)
+
+@dof_bp.route('/dof/create', methods=['GET', 'POST'])
+@login_required
+@optimize_db_operations
+def create_dof():
+    # Başlama zamanı (performans ölçümü için)
+    start_time = time.time()
+    form = DOFForm()
+    
+    # İlişkili DÖF kontrolü - URL'den related_dof parametresi kontrolu
+    related_dof_id = request.args.get('related_dof', None)
+    related_dof = None
+    
+    if related_dof_id:
+        try:
+            related_dof = DOF.query.get(related_dof_id)
+            if related_dof:
+                # İlişkili DÖF bilgilerini forma ön yükle
+                form.title.data = f"[İlişkili #{related_dof.id}] {related_dof.title}"
+                form.description.data = f"Bu DÖF, #{related_dof.id} numaralı DÖF ile ilişkilidir.\n\n"
+                form.dof_type.data = related_dof.dof_type
+                form.dof_source.data = related_dof.dof_source
+                form.priority.data = related_dof.priority
+                form.department.data = related_dof.department_id if related_dof.department_id else 0
+                
+                flash(f"#{related_dof.id} numaralı DÖF ile ilişkili yeni DÖF oluşturuyorsunuz. Gerekli alanlar otomatik dolduruldu.", "info")
+        except Exception as e:
+            current_app.logger.error(f"İlişkili DÖF yükleme hatası: {str(e)}")
+            flash("İlişkili DÖF bilgileri yüklenirken bir hata oluştu.", "warning")
+    
+    if form.validate_on_submit():
+        # Temel DÖF kaydı oluştur
+        dof = DOF(
+            title=form.title.data,
+            description=form.description.data,
+            dof_type=form.dof_type.data,
+            dof_source=form.dof_source.data,
+            priority=form.priority.data,
+            department_id=form.department.data if form.department.data != 0 else None,
+            status=DOFStatus.IN_REVIEW,
+            created_by=current_user.id,
+            created_at=datetime.now(),
+            due_date=form.due_date.data
+        )
+        
+        # Tek seferde tüm dosyaları ve aksiyonları ekle
+        db.session.add(dof)
+        db.session.flush()  # ID oluşturmak için flush yap
+        
+        # Dosya eklerini işlemek için hazırlık
+        attachments = []
+        files = request.files.getlist('files')
+        for file in files:
+            if file and file.filename and allowed_file(file.filename):
+                file_data = save_file(file)
+                
+                attachment = Attachment(
+                    dof_id=dof.id,
+                    filename=file_data['filename'],
+                    file_path=file_data['file_path'],
+                    file_size=file_data['file_size'],
+                    file_type=file_data['file_type'],
+                    uploaded_by=current_user.id,
+                    uploaded_at=datetime.now()
+                )
+                attachments.append(attachment)
+        
+        # DÖF oluşturma aksiyonu ekle
+        action = DOFAction(
+            dof_id=dof.id,
+            user_id=current_user.id,
+            action_type=1,  # 1: Oluşturma
+            comment="DÖF oluşturuldu",
+            created_at=datetime.now()
+        )
+        
+        # Tüm objeleri tek seferde veritabanına ekle
+        if attachments:
+            db.session.add_all(attachments)
+        db.session.add(action)
+        
+        # Asenkron işlemler için gerekli bilgileri hazırla
+        dof_id = dof.id
+        dof_title = dof.title
+        dof_description = dof.description
+        creator_name = current_user.full_name
+        dept_id = dof.department_id
+        
+        # E-posta bildirimi için gereken tüm bilgileri hazırla
+        def send_notifications_async():
+            try:
+                # Bildirimleri gönder (asenkron olarak çağrılacak)
+                # Önce doğrudan notification_helper'i kullanmayı dene
+                try:
+                    from notification_helper import notify_all_relevant_users
+                    message = f"{current_user.full_name} tarafından '{dof.title}' (#{dof.id}) başlıklı yeni bir DÖF oluşturuldu"
+                    notification_count = notify_all_relevant_users(dof, "create", current_user, message)
+                    current_app.logger.info(f"YENİ DÖF #{dof.id} için {notification_count} bildirim gönderildi (notify_all_relevant_users kullanıldı)")
+                except Exception as e:
+                    current_app.logger.error(f"YENİ MODÜL HATA: {str(e)}")
+                    # Eski yöntem ile dene
+                    notify_for_dof(dof, "create", current_user)
+                    current_app.logger.info(f"YENİ DÖF #{dof.id} için bildirimler gönderildi (eski yöntem)")
+                
+                # Kalite yöneticilerine mutlaka bildirim gönderildiğinden emin ol
+                try:
+                    from models import User, UserRole
+                    quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER, active=True).all()
+                    if quality_managers:
+                        current_app.logger.info(f"{len(quality_managers)} kalite yöneticisi bulundu - doğrudan bildirim gönderiliyor")
+                        for qm in quality_managers:
+                            # Kalite yöneticisinin kendi oluşturduğu döfler için bildirim gönderme
+                            if qm and qm.id != current_user.id:
+                                from utils import create_notification
+                                message = f"{current_user.full_name} tarafından '{dof.title}' (#{dof.id}) başlıklı yeni bir DÖF oluşturuldu."
+                                create_notification(qm.id, message, dof.id)
+                                current_app.logger.info(f"DÖF #{dof.id} için KALİTE YÖNETİCİSİ bildirim TEKRAR gönderildi: {qm.email}")
+                except Exception as e:
+                    current_app.logger.error(f"Kalite yöneticisi ek bildirim hatası: {str(e)}")
+                                        
+                
+                # E-posta gönderimi
+                from direct_email import send_direct_email
+                from models import User
+                
+                # Kalite yöneticilerini al (UserRole.QUALITY_MANAGER = 2)
+                from models import UserRole
+                quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER, active=True).all()
+                recipients = [qm.email for qm in quality_managers if qm and qm.email]
+                
+                # Departman yöneticisi varsa ekle
+                if dept_id:
+                    dept = Department.query.get(dept_id)
+                    if dept and dept.manager_id:
+                        dept_manager = User.query.get(dept.manager_id)
+                        if dept_manager and dept_manager.email and dept_manager.id != current_user.id:
+                            recipients.append(dept_manager.email)
+                
+                # Tekrarı önle
+                recipients = list(set(recipients))
+                
+                # E-posta içeriği
+                subject = f"DÖF Sistemi - Yeni DÖF: {dof_title}"
+                html_content = f"""
+                <html>
+                    <body>
+                        <h2>Yeni DÖF Bildirim</h2>
+                        <p>{creator_name} tarafından <strong>"{dof_title}"</strong> başlıklı yeni bir DÖF oluşturuldu.</p>
+                        <p><b>Açıklama:</b> {dof_description[:200]}...</p>
+                        <p><a href="{current_app.config.get('BASE_URL', '')}dof/detail/{dof_id}">DÖF detaylarını görüntülemek için tıklayınız</a></p>
+                        <p>Tarih/Saat: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</p>
+                        <p>Bu otomatik bir bildirimdir.</p>
+                    </body>
+                </html>
+                """
+                text_content = f"Yeni DÖF Bildirim\n\n{creator_name} tarafından \"{dof_title}\" başlıklı yeni bir DÖF oluşturuldu.\n\nAçıklama: {dof_description[:200]}...\n\nBu otomatik bir bildirimdir."
+                
+                # ASENKRON e-posta gönderimi
+                for recipient in recipients:
+                    current_app.logger.info(f"YENİ DÖF bildirim e-postası gönderiliyor: {recipient}")
+                    send_email_async(subject, [recipient], html_content, text_content)
+            except Exception as e:
+                current_app.logger.error(f"Asenkron bildirim hatası: {str(e)}")
+        
+        # Asenkron bildirimleri başlat
+        import threading
+        notification_thread = threading.Thread(target=send_notifications_async)
+        notification_thread.daemon = True
+        notification_thread.start()
+        
+        # Log kaydı oluştur
+        log_activity(
+            user_id=current_user.id,
+            action="DÖF Oluşturma",
+            details=f"DÖF oluşturuldu: {dof.title}",
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string
+        )
+        
+        # İşlem süresini ölç
+        end_time = time.time()
+        process_time = round((end_time - start_time) * 1000)  # milisaniye cinsinden
+        current_app.logger.info(f"DÖF oluşturma süresi: {process_time}ms")
+        
+        # Doğrudan bildirim gönder - ÇÖZÜM
+        try:
+            send_direct_notifications_to_quality_managers(dof.id, current_user.full_name, dof.title)
+            current_app.logger.info(f"DÖF #{dof.id} için doğrudan bildirim gönderildi")
+        except Exception as e:
+            current_app.logger.error(f"Doğrudan bildirim gönderme hatası: {str(e)}")
+            import traceback
+            current_app.logger.error(traceback.format_exc())
+        
+        flash('DÖF başarıyla oluşturuldu.', 'success')
+        return redirect(url_for('dof.detail', dof_id=dof.id))
+    
+    return render_template('dof/create.html', form=form)
+    
+    return render_template('dof/create.html', form=form)
+
+@dof_bp.route('/dof/list')
+@login_required
+def list_dofs():
+    # DÖF'leri listeleme sayfası
+    # Performans ölçümü
+    start_time = time.time()
+    
+    # AJAX isteği kontrolü
+    is_ajax = request.args.get('ajax', type=int, default=0) == 1
+    
+    form = SearchForm(request.args)
+    
+    # Departman seçeneklerini al
+    departments = Department.query.all()
+    
+    # Filtreleri uygula
+    query = DOF.query
+    status = request.args.get('status', type=int)
+    dept_id = request.args.get('department', type=int)
+    search_term = request.args.get('search_term', '')
+    if search_term:
+        query = query.filter(or_(DOF.title.like(search_term), DOF.description.like(search_term)))
+    
+    if request.args.get('status') and request.args.get('status').isdigit() and int(request.args.get('status')) != 0:
+        query = query.filter_by(status=int(request.args.get('status')))
+    
+    # Departman filtresi
+    try:
+        if request.args.get('department'):
+            dept_param = request.args.get('department')
+            # Eğer string olarak geldiyse ve sayı ise
+            if isinstance(dept_param, str) and dept_param.isdigit() and int(dept_param) > 0:
+                query = query.filter_by(department_id=int(dept_param))
+            # Eğer doğrudan sayı olarak geldiyse
+            elif isinstance(dept_param, int) and dept_param > 0:
+                query = query.filter_by(department_id=dept_param)
+    except Exception as e:
+        current_app.logger.error(f"Departman filtreleme hatası: {str(e)}")
+        
+    # Oluşturan kişinin departmanına göre filtreleme
+    try:
+        if request.args.get('created_dept'):
+            created_dept = request.args.get('created_dept')
+            # Eğer string olarak geldiyse ve sayı ise
+            if isinstance(created_dept, str) and created_dept.isdigit() and int(created_dept) > 0:
+                dept_id = int(created_dept)
+            # Eğer doğrudan sayı olarak geldiyse
+            elif isinstance(created_dept, int) and created_dept > 0:
+                dept_id = created_dept
+            else:
+                dept_id = None
+                
+            if dept_id:
+                # Kullanıcıların departmanına göre filtreleme yapmak için
+                # önce o departmana ait tüm kullanıcıları bul
+                dept_users = User.query.filter_by(department_id=dept_id).all()
+                dept_user_ids = [user.id for user in dept_users]
+                
+                # Departmandaki kullanıcıların oluşturduğu DÖF'leri filtrele
+                if dept_user_ids:
+                    query = query.filter(DOF.created_by.in_(dept_user_ids))
+    except Exception as e:
+        current_app.logger.error(f"Oluşturan departman filtreleme hatası: {str(e)}")
+    
+    # Tarih filtrelerini güvenli bir şekilde işle
+    if request.args.get('date_from') and request.args.get('date_from').strip():
+        try:
+            date_from = datetime.strptime(request.args.get('date_from'), '%Y-%m-%d')
+            query = query.filter(DOF.created_at >= date_from)
+        except ValueError:
+            flash('Başlangıç tarihi formatı hatalı. Lütfen geçerli bir tarih seçin.', 'warning')
+    
+    if request.args.get('date_to') and request.args.get('date_to').strip():
+        try:
+            date_to = datetime.strptime(request.args.get('date_to'), '%Y-%m-%d')
+            # Bitiş tarihi için günün sonuna kadar tüm kayıtları dahil et
+            date_to = date_to.replace(hour=23, minute=59, second=59)
+            query = query.filter(DOF.created_at <= date_to)
+        except ValueError:
+            flash('Bitiş tarihi formatı hatalı. Lütfen geçerli bir tarih seçin.', 'warning')
+    
+    # Normal kullanıcı sadece kendi oluşturduğu veya kendisine atanan DÖF'leri görebilir
+    if current_user.role == UserRole.USER:
+        query = query.filter(or_(DOF.created_by == current_user.id, DOF.assigned_to == current_user.id))
+    
+    # Sıralama ve sayfalama
+    page = request.args.get('page', 1, type=int)
+    per_page = 5 if is_ajax else 10  # AJAX için daha az sayıda DÖF göster
+    dofs = query.order_by(DOF.created_at.desc()).paginate(page=page, per_page=per_page)
+    
+    # Performans ölçümü bitiş
+    end_time = time.time()
+    process_time = round((end_time - start_time) * 1000)  # milisaniye cinsinden
+    current_app.logger.info(f"DÖF listeleme süresi: {process_time}ms, AJAX: {is_ajax}")
+    
+    # AJAX isteği ise basitleştirilmiş şablon döndür
+    if is_ajax:
+        return render_template('dof/partials/dof_list_table.html', 
+                              dofs=dofs,
+                              status=DOFStatus,
+                              department=Department)
+    
+    # Normal sayfa gösterimi
+    return render_template('dof/list.html', 
+                          dofs=dofs, 
+                          form=form, 
+                          status=DOFStatus, 
+                          department=Department)
+
+@dof_bp.route('/dof/<int:dof_id>')
+@login_required
+def detail(dof_id):
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # DÖF düzenleme yetkisi kontrol et
+    can_edit = can_user_edit_dof(current_user, dof)
+    
+    # İş akışı durumunu kontrol et
+    workflow_step = None
+    
+    # Kullanıcı rolüne DÖF durumuna göre sonraki adımı belirle
+    if current_user.role == UserRole.ADMIN or current_user.role == UserRole.QUALITY_MANAGER:
+        # Kalite yöneticisi ve Admin için her zaman workflow_step ayarla
+        # tüm durumlarda kontrol için
+        workflow_step = "quality_review"
+    # Departman yöneticilerinin atanan DÖF'ü çözme yetkisi - departman eşleşmesi yeterli
+    elif current_user.role == UserRole.DEPARTMENT_MANAGER:
+        # Eğer DÖF'ün departman adı ile kullanıcının departman adı eşleşirse çözüm butonu göster
+        if dof.department and current_user.department:
+            if dof.department.name == current_user.department.name:
+                workflow_step = "department_action"
+                # Debug mesajı
+                print(f"Departman eşleşmesi bulundu: {dof.department.name}, durum: {dof.status}")
+            else:
+                print(f"Departman eşleşmesi yok: {dof.department.name} != {current_user.department.name}")
+        else:
+            print(f"Departman bilgisi eksik - DÖF departman: {dof.department}, Kullanıcı departman: {current_user.department}")
+    else:
+        print(f"Kullanıcı rolü uygun değil: {current_user.role}")
+            
+    # Aksiyon formu oluştur
+    form = DOFActionForm()
+    
+    # Aksiyonları getir
+    actions = DOFAction.query.filter_by(dof_id=dof_id).order_by(DOFAction.created_at.desc()).all()
+    
+    # Dosya eklerini getir
+    attachments = Attachment.query.filter_by(dof_id=dof_id).all()
+    
+    # Son güncelleme tarihi
+    last_update = dof.updated_at
+    if actions and actions[0].created_at > last_update:
+        last_update = actions[0].created_at
+    
+    # Kaynak departman bilgisini al
+    creator_dept = User.query.get(dof.created_by).department
+    source_department = creator_dept.name if creator_dept else "Belirsiz"
+    
+    # Log kaydı oluştur
+    log_activity(
+        user_id=current_user.id,
+        action="DÖF Görüntüleme",
+        details=f"DÖF görüntülendi: {dof.title}",
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
+    
+    return render_template('dof/detail.html', 
+                           dof=dof, 
+                           actions=actions,
+                           attachments=attachments,
+                           last_update=last_update,
+                           can_edit=can_edit,
+                           workflow_step=workflow_step,
+                           source_department=source_department,
+                           status=DOFStatus,
+                           form=form,
+                           title="DÖF Detayı")
+
+@dof_bp.route('/dof/<int:dof_id>/closure', methods=['GET', 'POST'])
+@login_required
+def close_dof(dof_id):
+    """
+    DÖF'nin kalite yöneticisi tarafından kapanış değerlendirmesi
+    """
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Yetki kontrolü: Sadece kalite yöneticileri ve adminler erişebilir
+    if current_user.role not in [UserRole.QUALITY_MANAGER, UserRole.ADMIN]:
+        flash('Bu sayfaya erişim yetkiniz yok.', 'danger')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # Sadece uygun durumdaki DÖF'ler için işlem yapılabilir
+    if dof.status not in [DOFStatus.RESOLVED, DOFStatus.COMPLETED, DOFStatus.SOURCE_REVIEW]:
+        flash('Bu DÖF değerlendirmeye uygun durumda değil.', 'warning')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+        
+    # Duruma göre form başlığını ve açıklamasını belirle
+    if dof.status == DOFStatus.COMPLETED:
+        # Tamamlanan işlemin kaynak departman tarafından değerlendirilmesi
+        page_title = "Kaynak Departman Değerlendirmesi"
+        page_description = "DÖF çözümünü değerlendirin. Çözüm yeterli mi, yoksa sorun devam mı ediyor?"
+    elif dof.status == DOFStatus.SOURCE_REVIEW:
+        # Kaynak incelemesinden sonra kalite tarafından son değerlendirme
+        page_title = "Kalite Final Değerlendirmesi"
+        page_description = "DÖF'u kapatabilir veya yeni DÖF açılmasını talep edebilirsiniz."
+    else:
+        # Çözüldü durumundaki klasik akış
+        page_title = "DÖF Kapanış Değerlendirmesi"
+        page_description = "DÖF çözümünü değerlendirin ve kapanış kararını verin."
+    
+    # Form hazırlığı
+    form = QualityClosureForm()
+    
+    if form.validate_on_submit():
+        # Eski durum bilgisi al
+        old_status = dof.status
+        
+        # Durum geçişleri
+        if dof.status == DOFStatus.COMPLETED:
+            # Kaynak departman değerlendirmesi
+            if 'approve_solution' in request.form:
+                # Çözüm onaylanıyor, kaynak incelemesine geç
+                dof.status = DOFStatus.SOURCE_REVIEW
+                dof.resolution_comment = form.comment.data
+                dof.updated_at = datetime.now()
+                
+                # Bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} çözümü onaylandı ve kalite son değerlendirmesine gönderildi."
+                )
+                db.session.add(notification)
+                
+                flash("Çözüm onaylanarak kalite son değerlendirmesine gönderildi.", "success")
+                
+            elif 'reject_solution' in request.form:
+                # Çözüm sağlanamadı, tekrar devam ediyor durumuna geç
+                dof.status = DOFStatus.IN_PROGRESS
+                dof.resolution_comment = form.comment.data + "\n\nÇözüm yetersiz bulundu."
+                dof.updated_at = datetime.now()
+                
+                # Bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} çözümü yetersiz bulundu. Yeniden işleme alınacak."
+                )
+                db.session.add(notification)
+                
+                flash("Çözüm yetersiz bulundu. DÖF yeniden işleme alınacak.", "warning")
+                
+        elif dof.status == DOFStatus.SOURCE_REVIEW:
+            # Kalite final değerlendirmesi
+            if 'close_dof' in request.form:
+                # DÖF'u kapat
+                dof.status = DOFStatus.CLOSED
+                dof.closed_at = datetime.now()
+                dof.resolution_comment = form.comment.data
+                dof.updated_at = datetime.now()
+                
+                # Bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} başarıyla kapatıldı."
+                )
+                db.session.add(notification)
+                
+                # Çözümü gerçekleştiren departman yöneticisine bildirim gönder
+                if dof.department_id:
+                    managers = User.query.filter_by(department_id=dof.department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                    for manager in managers:
+                        notification = Notification(
+                            user_id=manager.id,
+                            dof_id=dof.id,
+                            message=f"Departmanınızın çözdüğü DÖF #{dof.id} başarıyla kapatıldı."
+                        )
+                        db.session.add(notification)
+                
+                flash("DÖF başarıyla kapatıldı.", "success")
+                
+            elif 'request_new_dof' in request.form:
+                # Yeni DÖF talep et 
+                # Mevcut DÖF'u kapat
+                dof.status = DOFStatus.CLOSED
+                dof.closed_at = datetime.now()
+                dof.resolution_comment = form.comment.data + "\n\nYeni DÖF açılması talep edildi."
+                dof.updated_at = datetime.now()
+                
+                # Bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} kapatıldı ve yeni bir DÖF açılması talep edildi."
+                )
+                db.session.add(notification)
+                
+                flash("DÖF kapatıldı ve yeni DÖF talep edildi.", "info")
+                
+        else: 
+            # Eski akışla uyumlu işlemler
+            if 'close' in request.form:  # Onayla ve Kapat
+                dof.status = DOFStatus.CLOSED
+                dof.closed_at = datetime.now()
+                dof.resolution_comment = form.comment.data
+                dof.updated_at = datetime.now()
+                
+                # Bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} başarıyla çözüldü ve kalite tarafından onaylanarak kapatıldı."
+                )
+                db.session.add(notification)
+                
+                # Çözümü gerçekleştiren departman yöneticisine bildirim gönder
+                if dof.department_id:
+                    managers = User.query.filter_by(department_id=dof.department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                    for manager in managers:
+                        notification = Notification(
+                            user_id=manager.id,
+                            dof_id=dof.id,
+                            message=f"Departmanınızın çözdüğü DÖF #{dof.id} başarıyla kapatıldı."
+                        )
+                        db.session.add(notification)
+                
+                flash(f"DÖF başarıyla kapandı.", "success")
+                
+            elif 'reopen' in request.form:  # Yeniden Çözüm İste
+                dof.status = DOFStatus.IN_PROGRESS
+                dof.resolution_comment = form.comment.data + "\n\nYeniden çözüm istendi."
+                dof.updated_at = datetime.now()
+                
+                # DÖF sahibine bildirim gönder
+                notification = Notification(
+                    user_id=dof.created_by,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} için kalite tarafından yeniden çözüm istendi."
+                )
+                db.session.add(notification)
+                
+                # Çözümü gerçekleştiren departman yöneticisine bildirim gönder
+                if dof.department_id:
+                    managers = User.query.filter_by(department_id=dof.department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                    for manager in managers:
+                        notification = Notification(
+                            user_id=manager.id,
+                            dof_id=dof.id,
+                            message=f"DÖF #{dof.id} için yeniden çözüm isteniyor. Lütfen açıklamaları inceleyiniz."
+                        )
+                        db.session.add(notification)
+                
+                flash("DÖF yeniden incelenmek üzere ilgili departmana gönderildi.", "warning")
+                
+            elif 'new_dof' in request.form:  # Yeni DÖF Talebi
+                dof.status = DOFStatus.CLOSED
+                dof.closed_at = datetime.now()
+                dof.resolution_comment = form.comment.data + "\n\nYeni DÖF açılması talep edildi."
+            
+            # DÖF sahibine bildirim gönder
+            notification = Notification(
+                user_id=dof.created_by,
+                dof_id=dof.id,
+                message=f"DÖF #{dof.id} kapatıldı, ancak yeni bir DÖF açılması talep ediliyor."
+            )
+            db.session.add(notification)
+            
+            flash("DÖF kapatıldı ve yeni DÖF açılması talep edildi.", "info")
+        
+        db.session.commit()
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    return render_template('dof/quality_closure.html', form=form, dof=dof, title="DÖF Kapanış Değerlendirmesi")
+
+@dof_bp.route('/dof/<int:dof_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_dof(dof_id):
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Kullanıcının düzenleme yetkisi kontrol
+    if not can_user_edit_dof(current_user, dof):
+        abort(403)
+        
+    # Form oluştur
+    form = DOFForm(obj=dof)
+    
+    if form.validate_on_submit():
+        # Değişen alanları izlemek için eski değerleri sakla
+        old_values = {
+            'title': dof.title,
+            'description': dof.description,
+            'priority': dof.priority,
+            'department_id': dof.department_id,
+            'due_date': dof.due_date,
+            'deadline': dof.deadline,
+            'solution_plan': dof.solution_plan,
+            'dof_type': dof.dof_type,
+            'dof_source': dof.dof_source
+        }
+        
+        # Formdaki değerleri DÖF nesnesine aktar
+        form.populate_obj(dof)
+        
+        # Değişen alanları belirle
+        changed_fields = []
+        changes_details = []
+        
+        if old_values['title'] != dof.title:
+            changed_fields.append('Başlık')
+            changes_details.append(f"Başlık: '{old_values['title']}' -> '{dof.title}'")
+            
+        if old_values['description'] != dof.description:
+            changed_fields.append('Açıklama')
+            changes_details.append("Açıklama güncellendi")
+            
+        if old_values['priority'] != dof.priority:
+            changed_fields.append('Öncelik')
+            old_priority = 'Düşük' if old_values['priority'] == 1 else 'Orta' if old_values['priority'] == 2 else 'Yüksek'
+            new_priority = 'Düşük' if dof.priority == 1 else 'Orta' if dof.priority == 2 else 'Yüksek'
+            changes_details.append(f"Öncelik: {old_priority} -> {new_priority}")
+            
+        if old_values['department_id'] != dof.department_id:
+            changed_fields.append('Departman')
+            old_dept = Department.query.get(old_values['department_id']).name if old_values['department_id'] else '-'
+            new_dept = Department.query.get(dof.department_id).name if dof.department_id else '-'
+            changes_details.append(f"Departman: {old_dept} -> {new_dept}")
+            
+        if old_values['due_date'] != dof.due_date:
+            changed_fields.append('Son Tarih')
+            old_date = old_values['due_date'].strftime('%d.%m.%Y') if old_values['due_date'] else '-'
+            new_date = dof.due_date.strftime('%d.%m.%Y') if dof.due_date else '-'
+            changes_details.append(f"Son Tarih: {old_date} -> {new_date}")
+            
+        if old_values['deadline'] != dof.deadline:
+            changed_fields.append('Termin')
+            old_date = old_values['deadline'].strftime('%d.%m.%Y') if old_values['deadline'] else '-'
+            new_date = dof.deadline.strftime('%d.%m.%Y') if dof.deadline else '-'
+            changes_details.append(f"Termin: {old_date} -> {new_date}")
+            
+        if old_values['solution_plan'] != dof.solution_plan:
+            changed_fields.append('Çözüm Planı')
+            changes_details.append("Çözüm planı güncellendi")
+        
+        if old_values['dof_type'] != dof.dof_type:
+            changed_fields.append('DÖF Türü')
+            changes_details.append(f"DÖF Türü değiştirildi")
+            
+        if old_values['dof_source'] != dof.dof_source:
+            changed_fields.append('DÖF Kaynağı')
+            changes_details.append(f"DÖF Kaynağı değiştirildi")
+            
+        # Güncelleme tarihini ayarla
+        dof.updated_at = datetime.now()
+        
+        # Dosya eklerini işle
+        files = request.files.getlist('files')
+        for file in files:
+            if file and file.filename and allowed_file(file.filename):
+                file_data = save_file(file)
+                
+                attachment = Attachment(
+                    dof_id=dof.id,
+                    filename=file_data['filename'],
+                    file_path=file_data['file_path'],
+                    file_size=file_data['file_size'],
+                    file_type=file_data['file_type'],
+                    uploaded_by=current_user.id,
+                    uploaded_at=datetime.now()
+                )
+                
+                db.session.add(attachment)
+                changed_fields.append('Dosya Eki')
+                changes_details.append(f"Yeni dosya eklendi: {file_data['filename']}")
+        
+        # Değişiklik olduysa aktivite kaydı oluştur
+        if changed_fields:
+            from models import UserActivity
+            change_description = f"Güncellenen alanlar: {', '.join(changed_fields)}\n\n{' | '.join(changes_details)}"
+            
+            # Değişiklik aktivitesini kaydet
+            activity = UserActivity(
+                user_id=current_user.id,
+                activity_type='update_dof',
+                description=change_description,
+                related_id=dof.id,
+                created_at=datetime.now()
+            )
+            db.session.add(activity)
+            
+            # Bildirim gönder
+            notify_for_dof(dof, "update", current_user)
+        
+        # Değişiklikleri kaydet
+        db.session.commit()
+        
+        flash('DÖF başarıyla güncellendi.', 'success')
+        return redirect(url_for('dof.detail', dof_id=dof.id))
+    
+    # GET isteği veya validasyon hatası durumunda form göster
+    return render_template('dof/edit.html', form=form, dof=dof)
+
+@dof_bp.route('/dof/<int:dof_id>/action', methods=['POST'])
+@login_required
+def add_dof_action(dof_id):
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Kullanıcının erişim yetkisi kontrol
+    if not can_user_edit_dof(current_user, dof):
+        abort(403)
+    
+    # Eğer DÖF kapatılmış veya reddedilmişse aksiyon eklenemez
+    if dof.status in [DOFStatus.CLOSED, DOFStatus.REJECTED]:
+        flash('Kapatılmış veya reddedilmiş DÖF\'e aksiyon eklenemez.', 'danger')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    form = DOFActionForm(dof_status=dof.status)
+    
+    if form.validate_on_submit():
+        # Durum değişikliği
+        old_status = dof.status
+        new_status = None
+        
+        # Kök neden ve aksiyon planı girişi kontrolü - ASSIGNED durumundan PLANNING durumuna geçiş
+        if old_status == DOFStatus.ASSIGNED and form.comment.data and form.root_cause.data and form.resolution_plan.data:
+            # Departman kök neden ve aksiyon planlarını giriyor
+            dof.root_cause = form.root_cause.data
+            dof.resolution_plan = form.resolution_plan.data
+            
+            # Plan kaydedildi, PLANNING durumuna geçiş
+            new_status = DOFStatus.PLANNING
+            dof.status = new_status
+            flash('Kök neden ve aksiyon planı kaydedildi. Kalite incelemesi bekleniyor.', 'success')
+        
+        elif form.new_status.data:
+            if not can_user_change_status(current_user, dof, form.new_status.data):
+                flash('Bu durum değişikliğini yapma yetkiniz yok.', 'danger')
+                return redirect(url_for('dof.detail', dof_id=dof_id))
+            
+            new_status = form.new_status.data
+            dof.status = new_status
+            
+            # Eğer kapatılıyorsa, kapatılma tarihini ayarla
+            if new_status == DOFStatus.CLOSED:
+                dof.closed_at = datetime.now()
+        
+        # Atama değişikliği
+        if form.assigned_to.data and form.assigned_to.data != 0:
+            dof.assigned_to = form.assigned_to.data
+        
+        dof.updated_at = datetime.now()
+        
+        # Aksiyonu kaydet
+        action = DOFAction(
+            dof_id=dof.id,
+            user_id=current_user.id,
+            action_type=3 if new_status else 1,  # 3: Durum Değişikliği, 1: Yorum
+            comment=form.comment.data,
+            old_status=old_status if new_status else None,
+            new_status=new_status,
+            created_at=datetime.now()
+        )
+        
+        db.session.add(action)
+        
+        # Dosya eklerini işle
+        files = request.files.getlist('files')
+        for file in files:
+            if file and file.filename and allowed_file(file.filename):
+                file_data = save_file(file)
+                
+                attachment = Attachment(
+                    dof_id=dof.id,
+                    filename=file_data['filename'],
+                    file_path=file_data['file_path'],
+                    file_size=file_data['file_size'],
+                    file_type=file_data['file_type'],
+                    uploaded_by=current_user.id,
+                    uploaded_at=datetime.now()
+                )
+                
+                db.session.add(attachment)
+        
+        db.session.commit()
+        
+        # Aktivite kaydı ve bildirim oluştur
+        from models import UserActivity
+        activity_type = ''
+        activity_description = ''
+        notification_type = ''
+        
+        if new_status:
+            # Durum değişikliği
+            old_status_label = DOFStatus.get_label(old_status) if hasattr(DOFStatus, 'get_label') else str(old_status)
+            new_status_label = DOFStatus.get_label(new_status) if hasattr(DOFStatus, 'get_label') else str(new_status)
+            
+            activity_type = 'status_change'
+            activity_description = f"DÖF durumu değiştirildi: {old_status_label} -> {new_status_label}"
+            
+            if form.comment.data:
+                activity_description += f"\n\nAçıklama: {form.comment.data}"
+                
+            notification_type = "status_change"
+            
+        elif form.assigned_to.data and form.assigned_to.data != 0:
+            # Atama değişikliği
+            assigned_user = User.query.get(form.assigned_to.data)
+            activity_type = 'assign'
+            activity_description = f"DÖF ataması yapıldı: {assigned_user.fullname if assigned_user else 'Bilinmeyen Kullanıcı'}"
+            
+            if form.comment.data:
+                activity_description += f"\n\nAçıklama: {form.comment.data}"
+                
+            notification_type = "assign"
+            
+        else:
+            # Yorum ekleme
+            activity_type = 'comment'
+            activity_description = f"DÖF'e yorum eklendi: {form.comment.data[:100]}{'...' if len(form.comment.data) > 100 else ''}"
+            notification_type = "comment"
+        
+        # Aktivite kaydını oluştur
+        activity = UserActivity(
+            user_id=current_user.id,
+            activity_type=activity_type,
+            description=activity_description,
+            related_id=dof.id,
+            created_at=datetime.now()
+        )
+        db.session.add(activity)
+        
+        # Bildirim gönder
+        notify_for_dof(dof, notification_type, current_user)
+        
+        # Log kaydı oluştur
+        if new_status:
+            # Durumların string karşılıklarını belirle
+            old_status_name = "Bilinmiyor"
+            new_status_name = "Bilinmiyor"
+            
+            # Eski durum adını belirle
+            if old_status == DOFStatus.DRAFT:
+                old_status_name = "Taslak"
+            elif old_status == DOFStatus.SUBMITTED:
+                old_status_name = "Gönderildi"
+            elif old_status == DOFStatus.IN_REVIEW:
+                old_status_name = "İncelemede"
+            elif old_status == DOFStatus.ASSIGNED:
+                old_status_name = "Atandı"
+            elif old_status == DOFStatus.IN_PROGRESS:
+                old_status_name = "Devam Ediyor"
+            elif old_status == DOFStatus.RESOLVED:
+                old_status_name = "Çözüldü"
+            elif old_status == DOFStatus.CLOSED:
+                old_status_name = "Kapatıldı"
+            elif old_status == DOFStatus.REJECTED:
+                old_status_name = "Reddedildi"
+            
+            # Yeni durum adını belirle
+            if new_status == DOFStatus.DRAFT:
+                new_status_name = "Taslak"
+            elif new_status == DOFStatus.SUBMITTED:
+                new_status_name = "Gönderildi"
+            elif new_status == DOFStatus.IN_REVIEW:
+                new_status_name = "İncelemede"
+            elif new_status == DOFStatus.ASSIGNED:
+                new_status_name = "Atandı"
+            elif new_status == DOFStatus.IN_PROGRESS:
+                new_status_name = "Devam Ediyor"
+            elif new_status == DOFStatus.RESOLVED:
+                new_status_name = "Çözüldü"
+            elif new_status == DOFStatus.CLOSED:
+                new_status_name = "Kapatıldı"
+            elif new_status == DOFStatus.REJECTED:
+                new_status_name = "Reddedildi"
+            
+            log_activity(
+                user_id=current_user.id,
+                action="DÖF Durum Değişikliği",
+                details=f"DÖF durumu değiştirildi: {dof.title} - {old_status_name} -> {new_status_name}",
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string
+            )
+        else:
+            log_activity(
+                user_id=current_user.id,
+                action="DÖF Aksiyon Ekleme",
+                details=f"DÖF'e aksiyon eklendi: {dof.title}",
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string
+            )
+        
+        flash('Aksiyon başarıyla eklendi.', 'success')
+        return redirect(url_for('dof.detail', dof_id=dof.id))
+    
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash(f"{getattr(form, field).label.text}: {error}", 'danger')
+    
+    return redirect(url_for('dof.detail', dof_id=dof_id))
+
+@dof_bp.route('/dof/<int:dof_id>/resolve', methods=['GET', 'POST'])
+@login_required
+@optimize_db_operations
+def resolve_dof(dof_id):
+    # DÖF çözüm planı ve kök neden analizi ekleme sayfası
+    start_time = time.time()  # Performans ölçümü başlat
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Kullanıcı yetkisini kontrol et - sadece departman yöneticileri ve adminler
+    if current_user.role not in [UserRole.DEPARTMENT_MANAGER, UserRole.ADMIN]:
+        flash('Sadece departman yöneticileri veya admin kullanıcılar DÖF çözüm planı girebilir.', 'warning')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # Debug bilgisi
+    print(f"Kullanıcı rolü: {current_user.role}, DÖF ID: {dof_id}, DÖF durumu: {dof.status}")
+    
+    # DÖF durumu ne olursa olsun, form ekranına yönlendirilir ve güncelleme form gönderildiğinde yapılır
+    # 'ATANDI' durumundaki döfler için kural yok, herhangi bir departman yöneticisi işlem yapabilir
+    
+    # Çözüm formu
+    form = DOFResolveForm()
+    
+    # GET isteğinde mevcut değerlerle formu doldur
+    if request.method == 'GET':
+        # Mevcut değerler varsa formu doldur
+        if dof.root_cause1:
+            form.root_cause1.data = dof.root_cause1
+        if dof.root_cause2:
+            form.root_cause2.data = dof.root_cause2
+        if dof.root_cause3:
+            form.root_cause3.data = dof.root_cause3
+        if dof.root_cause4:
+            form.root_cause4.data = dof.root_cause4
+        if dof.root_cause5:
+            form.root_cause5.data = dof.root_cause5
+        if dof.deadline:
+            form.deadline.data = dof.deadline
+        if dof.action_plan:
+            form.action_plan.data = dof.action_plan
+    
+    # POST isteği ve form doğrulama işlemi
+    if request.method == 'POST':
+        print(f"POST isteği alındı - form onay: {form.validate()}")
+        # Form hatalarını göster
+        if not form.validate():
+            for field, errors in form.errors.items():
+                for error in errors:
+                    flash(f"{getattr(form, field).label.text}: {error}", 'danger')
+            return render_template('dof/resolve.html', 
+                           dof=dof,
+                           form=form,
+                           status=DOFStatus,
+                           title="DÖF Çözüm Planı")
+        
+    # Form doğrulandı
+    if form.validate_on_submit():
+        # Kök neden analizlerini kaydet
+        dof.root_cause1 = form.root_cause1.data
+        dof.root_cause2 = form.root_cause2.data
+        dof.root_cause3 = form.root_cause3.data
+        dof.root_cause4 = form.root_cause4.data
+        dof.root_cause5 = form.root_cause5.data
+        
+        # Termin tarihi ve aksiyon planını kaydet
+        dof.deadline = form.deadline.data
+        dof.action_plan = form.action_plan.data
+        
+        # Değişken tanımlamaları
+        status_change = False
+        old_status = dof.status
+        
+        # Durum kontrolü ve geçişler
+        if dof.status == DOFStatus.ASSIGNED:
+            # Yeni akış: Atandı -> Planlama aşaması
+            dof.status = DOFStatus.PLANNING 
+            status_change = True
+            old_status = DOFStatus.ASSIGNED
+            
+            # Kök neden ve aksiyon planı girildikten sonra kalite departmanına bildirim gönder
+            quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER).all()
+            for manager in quality_managers:
+                notification = Notification(
+                    user_id=manager.id,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} için kök neden analizi ve aksiyon planı hazırlandı. İncelemeniz gerekiyor."
+                )
+                db.session.add(notification)
+                
+            flash("DÖF kök neden analizi ve aksiyon planı kaydedildi. Kalite departmanı incelemesi bekleniyor.", "success")
+            
+        elif dof.status == DOFStatus.IMPLEMENTATION:
+            # Uygulama aşamasından Tamamlandı aşamasına geçiş
+            if 'complete' in request.form:
+                dof.status = DOFStatus.COMPLETED
+                status_change = True
+                old_status = DOFStatus.IMPLEMENTATION
+                
+                # Kaynak departmana bildirim gönder
+                if dof.source_department_id:
+                    managers = User.query.filter_by(department_id=dof.source_department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                    for manager in managers:
+                        notification = Notification(
+                            user_id=manager.id,
+                            dof_id=dof.id,
+                            message=f"DÖF #{dof.id} için yapılan aksiyonlar tamamlandı. İncelemeniz ve onaylamanız gerekiyor."
+                        )
+                        db.session.add(notification)
+                        
+                flash("DÖF aksiyonları tamamlandı olarak işaretlendi. Kaynak departmanın onayı bekleniyor.", "success")
+        else:
+            # Diğer durumlar için durum değişikliği yok, sadece güncelleme
+            status_change = False
+            flash("DÖF kök neden analizi ve aksiyon planı güncellendi.", "success")
+        
+        dof.updated_at = datetime.now()
+        
+        # Aksiyonu kaydet
+        action = DOFAction(
+            dof_id=dof.id,
+            user_id=current_user.id,
+            action_type=2 if status_change else 1,  # 2: Durum Değişikliği, 1: Yorum
+            comment=form.comment.data,
+            old_status=old_status if status_change else None,
+            new_status=dof.status if status_change else None,
+            created_at=datetime.now()
+        )
+        
+        db.session.add(action)
+        db.session.commit()
+        
+        # Performans ölçümü
+        commit_time = time.time()
+        commit_duration = round((commit_time - start_time) * 1000)  # milisaniye cinsinden
+        current_app.logger.info(f"DÖF çözüm planı veritabanı işlem süresi: {commit_duration}ms")
+        
+        # Bildirim ve e-posta işlemleri için asenkron fonksiyon
+        def send_notifications_async():
+            try:
+                # Sistem içi bildirim oluştur
+                notify_for_dof(dof, "status_change", current_user)
+                
+                # Durum değişikliği bildirimlerini gönder
+                if status_change:
+                    # E-posta bilgilerini hazırla
+                    from models import User
+                    dof_id = dof.id
+                    dof_title = dof.title
+                    dept_id = dof.department_id
+                    created_by_id = dof.created_by
+                    assigned_to_id = dof.assigned_to
+                    user_name = current_user.full_name
+                    
+                    # Kalite yöneticilerini al
+                    quality_managers = User.query.filter_by(role=2).all()
+                    recipients = [qm.email for qm in quality_managers if qm and qm.email]
+                    
+                    # DÖF sahibi
+                    creator = User.query.get(created_by_id)
+                    if creator and creator.email and creator.id != current_user.id:
+                        recipients.append(creator.email)
+                    
+                    # Atanan kişi
+                    if assigned_to_id:
+                        assignee = User.query.get(assigned_to_id)
+                        if assignee and assignee.email and assignee.id != current_user.id:
+                            recipients.append(assignee.email)
+                    
+                    # Departman yöneticisi
+                    if dept_id:
+                        dept = Department.query.get(dept_id)
+                        if dept and dept.manager_id:
+                            dept_manager = User.query.get(dept.manager_id)
+                            if dept_manager and dept_manager.email and dept_manager.id != current_user.id:
+                                recipients.append(dept_manager.email)
+                    
+                    # Tekrarı önle
+                    recipients = list(set(recipients))
+                    
+                    # Durum adlarını al
+                    old_status_name = "Bilinmiyor"
+                    new_status_name = "Bilinmiyor"
+                    
+                    for status_enum, status_name in [
+                        (DOFStatus.DRAFT, "Taslak"),
+                        (DOFStatus.SUBMITTED, "Gönderildi"),
+                        (DOFStatus.IN_REVIEW, "İncelemede"),
+                        (DOFStatus.ASSIGNED, "Atandı"),
+                        (DOFStatus.IN_PROGRESS, "Devam Ediyor"),
+                        (DOFStatus.RESOLVED, "Çözüldü"),
+                        (DOFStatus.CLOSED, "Kapatıldı"),
+                        (DOFStatus.REJECTED, "Reddedildi")
+                    ]:
+                        if old_status == status_enum:
+                            old_status_name = status_name
+                        if dof.status == status_enum:
+                            new_status_name = status_name
+                    
+                    # E-posta içeriği
+                    subject = f"DÖF Sistemi - Durum Değişikliği: {dof_title}"
+                    html_content = f"""
+                    <html>
+                        <body>
+                            <h2>DÖF Durum Değişikliği</h2>
+                            <p>{user_name} tarafından <strong>"{dof_title}"</strong> başlıklı DÖF için bir çözüm planı eklendi.</p>
+                            <p>DÖF durumu <strong>{old_status_name}</strong> durumundan <strong>{new_status_name}</strong> durumuna değiştirildi.</p>
+                            <p><a href="{current_app.config.get('BASE_URL', '')}dof/detail/{dof_id}">DÖF detaylarını görüntülemek için tıklayınız</a></p>
+                            <p>Tarih/Saat: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</p>
+                            <p>Bu otomatik bir bildirimdir.</p>
+                        </body>
+                    </html>
+                    """
+                    text_content = f"DÖF Durum Değişikliği\n\n{user_name} tarafından \"{dof_title}\" başlıklı DÖF için bir çözüm planı eklendi.\n\nDÖF durumu {old_status_name} durumundan {new_status_name} durumuna değiştirildi.\n\nBu otomatik bir bildirimdir."
+                    
+                    # ASENKRON e-posta gönderimi
+                    for recipient in recipients:
+                        current_app.logger.info(f"DÖF DURUM DEĞİŞİKLİĞİ bildirim e-postası gönderiliyor: {recipient}")
+                        send_email_async(subject, [recipient], html_content, text_content)
+            except Exception as e:
+                current_app.logger.error(f"Asenkron bildirim hatası: {str(e)}")
+        
+        # Asenkron bildirimleri başlat
+        import threading
+        notification_thread = threading.Thread(target=send_notifications_async)
+        notification_thread.daemon = True
+        notification_thread.start()
+        
+        # Yorum bildirimi (else durumu asenkron işlev içinde ele alınıyor)
+        
+        # Log kaydı oluştur
+        action_text = "DÖF çözüm planı eklendi"
+        if status_change:
+            # DOFStatus string temsillerini elde etme
+            old_status_name = "Bilinmiyor"
+            new_status_name = "Bilinmiyor"
+            
+            # Eski durum
+            if old_status == DOFStatus.DRAFT:
+                old_status_name = "Taslak"
+            elif old_status == DOFStatus.SUBMITTED:
+                old_status_name = "Gönderildi"
+            elif old_status == DOFStatus.IN_REVIEW:
+                old_status_name = "İncelemede"
+            elif old_status == DOFStatus.ASSIGNED:
+                old_status_name = "Atandı"
+            elif old_status == DOFStatus.IN_PROGRESS:
+                old_status_name = "Devam Ediyor"
+            elif old_status == DOFStatus.RESOLVED:
+                old_status_name = "Çözüldü"
+            elif old_status == DOFStatus.CLOSED:
+                old_status_name = "Kapatıldı"
+            elif old_status == DOFStatus.REJECTED:
+                old_status_name = "Reddedildi"
+            
+            # Yeni durum
+            if dof.status == DOFStatus.DRAFT:
+                new_status_name = "Taslak"
+            elif dof.status == DOFStatus.SUBMITTED:
+                new_status_name = "Gönderildi"
+            elif dof.status == DOFStatus.IN_REVIEW:
+                new_status_name = "İncelemede"
+            elif dof.status == DOFStatus.ASSIGNED:
+                new_status_name = "Atandı"
+            elif dof.status == DOFStatus.IN_PROGRESS:
+                new_status_name = "Devam Ediyor"
+            elif dof.status == DOFStatus.RESOLVED:
+                new_status_name = "Çözüldü"
+            elif dof.status == DOFStatus.CLOSED:
+                new_status_name = "Kapatıldı"
+            elif dof.status == DOFStatus.REJECTED:
+                new_status_name = "Reddedildi"
+                
+            action_text = f"DÖF durumu değiştirildi: {dof.title} - {old_status_name} -> {new_status_name}"
+        
+        log_activity(
+            user_id=current_user.id,
+            action="DÖF Çözüm İşlemi",
+            details=action_text,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string
+        )
+        
+        flash('DÖF çözüm planı başarıyla kaydedildi.', 'success')
+        return redirect(url_for('dof.detail', dof_id=dof.id))
+    
+    # Form hataları varsa göster
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash(f"{getattr(form, field).label.text}: {error}", 'danger')
+            
+    return render_template('dof/resolve.html', 
+                           dof=dof,
+                           form=form,
+                           status=DOFStatus,
+                           title="DÖF Çözüm Planı")
+
+@dof_bp.route('/dof/<int:dof_id>/download/<int:attachment_id>')
+@login_required
+def download_attachment(dof_id, attachment_id):
+    dof = DOF.query.get_or_404(dof_id)
+    attachment = Attachment.query.get_or_404(attachment_id)
+    
+    # Kullanıcının erişim yetkisi kontrol
+    if current_user.role == UserRole.USER and dof.created_by != current_user.id and dof.assigned_to != current_user.id:
+        abort(403)
+    
+    if current_user.role == UserRole.DEPARTMENT_MANAGER and dof.created_by != current_user.id and dof.assigned_to != current_user.id and dof.department_id != current_user.department_id:
+        abort(403)
+    
+    # Dosya yolunu kontrol et
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], attachment.file_path)
+    if not os.path.exists(file_path):
+        flash('Dosya bulunamadı.', 'danger')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # Log kaydı oluştur
+    log_activity(
+        user_id=current_user.id,
+        action="Dosya İndirme",
+        details=f"Dosya indirildi: {attachment.filename}",
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
+    
+    return send_file(file_path, as_attachment=True, download_name=attachment.filename)
+
+
+@dof_bp.route("/dof/<int:dof_id>/review_source", methods=["GET", "POST"])
+@login_required
+def review_source(dof_id):
+    # Rol kontrolü: Sadece admin ve departman yöneticileri girebilir
+    if current_user.role not in [UserRole.DEPARTMENT_MANAGER, UserRole.ADMIN]:
+        flash('Bu sayfaya erişim yetkiniz yok.', 'danger')
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Yalnızca kaynak departmanın yöneticileri bu sayfaya erişebilir
+    if current_user.department_id != dof.source_department_id and not current_user.is_admin():
+        flash("Bu işlem için yetkiniz bulunmuyor.", "danger")
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    # DOF durumu COMPLETED değilse erişim izni verme
+    if dof.status != DOFStatus.COMPLETED:
+        flash("Bu DOF henüz tamamlanma aşamasında değil.", "warning")
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    form = DOFActionForm()
+    
+    if form.validate_on_submit():
+        # Kaynak incelemesi sonucu işlemleri
+        action = DOFAction(
+            dof_id=dof.id,
+            user_id=current_user.id,
+            comment=form.comment.data,
+            created_at=datetime.now()
+        )
+        db.session.add(action)
+        
+        if 'approve' in request.form:  # Çözümü Onayla
+            dof.status = DOFStatus.RESOLVED
+            dof.updated_at = datetime.now()
+            
+            # Atanan departmana bildirim gönder
+            if dof.department_id:
+                managers = User.query.filter_by(department_id=dof.department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                for manager in managers:
+                    notification = Notification(
+                        user_id=manager.id,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} çözümünüz kaynak departman tarafından onaylandı."
+                    )
+                    db.session.add(notification)
+            
+            # Kalite yöneticilerine bildirim gönder
+            quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER).all()
+            for manager in quality_managers:
+                notification = Notification(
+                    user_id=manager.id,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} kaynak departman tarafından onaylandı. Son değerlendirme için inceleyebilirsiniz."
+                )
+                db.session.add(notification)
+            
+            flash("DÖF çözümü onaylandı ve kalite departmanına gönderildi.", "success")
+        
+        elif 'reject' in request.form:  # Çözümü Reddet
+            dof.status = DOFStatus.IN_PROGRESS
+            dof.updated_at = datetime.now()
+            
+            # Atanan departmana bildirim gönder
+            if dof.department_id:
+                managers = User.query.filter_by(department_id=dof.department_id, role=UserRole.DEPARTMENT_MANAGER).all()
+                for manager in managers:
+                    notification = Notification(
+                        user_id=manager.id,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} çözümünüz kaynak departman tarafından reddedildi. Lütfen açıklamaları kontrol edin."
+                    )
+                    db.session.add(notification)
+            
+            flash("DÖF çözümü reddedildi ve tekrar değerlendirilmek üzere ilgili departmana gönderildi.", "warning")
+        
+        db.session.commit()
+        return redirect(url_for('dof.detail', dof_id=dof_id))
+    
+    return render_template('dof/review_source.html', dof=dof, form=form)
