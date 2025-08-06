@@ -1,5 +1,5 @@
 from datetime import datetime
-from app import db
+from extensions import db
 from flask_login import UserMixin
 from flask import current_app
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,6 +14,8 @@ class UserRole:
     USER = 5  # Normal Kullanıcı
     DIRECTOR = 6  # Direktör (Bölge Müdürlerinin Üstü)
     FRANCHISE_DEPARTMENT_MANAGER = 7  # Franchise Departman Yöneticisi
+    PROJECTS_QUALITY_TRACKING = 8  # Projeler Kalite Takip
+    BRANCHES_QUALITY_TRACKING = 9  # Şubeler Kalite Takip
 
 # DÖF durumları
 class DOFStatus:
@@ -149,7 +151,9 @@ class User(UserMixin, db.Model):
             UserRole.DEPARTMENT_MANAGER: "Departman Yöneticisi",
             UserRole.USER: "Kullanıcı",
             UserRole.DIRECTOR: "Direktör",
-            UserRole.FRANCHISE_DEPARTMENT_MANAGER: "Franchise Departman Yöneticisi"
+            UserRole.FRANCHISE_DEPARTMENT_MANAGER: "Franchise Departman Yöneticisi",
+            UserRole.PROJECTS_QUALITY_TRACKING: "Projeler Kalite Takip",
+            UserRole.BRANCHES_QUALITY_TRACKING: "Şubeler Kalite Takip"
         }
         return roles.get(self.role, "Kullanıcı")
     
@@ -179,8 +183,8 @@ class User(UserMixin, db.Model):
             if dept and dept.manager_id == self.id:
                 departments.append(dept)
         
-        # Grup yöneticisi ise
-        if self.role == UserRole.GROUP_MANAGER:
+        # Grup yöneticisi, Projeler Kalite Takip, Şubeler Kalite Takip rolleri ise
+        if self.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             # 1. Yönetici olduğu gruplar
             managed_groups = DepartmentGroup.query.filter_by(manager_id=self.id).all()
             
@@ -204,9 +208,34 @@ class User(UserMixin, db.Model):
                 departments.extend(mapped_depts)
                 
             # Log kayıtları ekle
-            # Import yapmamıza gerek yok, zaten modül seviyesinde import edildi
-            current_app.logger.debug(f"Grup yöneticisi {self.username} için departman eşleştirmeleri: {len(user_dept_mappings) if 'user_dept_mappings' in locals() else 0}")
-            current_app.logger.debug(f"Grup yöneticisi {self.username} için toplam departman sayısı: {len(departments)}")
+            try:
+                from flask import current_app
+                current_app.logger.debug(f"Grup yöneticisi {self.username} için departman eşleştirmeleri: {len(user_dept_mappings) if 'user_dept_mappings' in locals() else 0}")
+                current_app.logger.debug(f"Grup yöneticisi {self.username} için toplam departman sayısı: {len(departments)}")
+            except:
+                pass  # Flask context yoksa log kaydı yapma
+        
+        # Direktör ise - altındaki bölge müdürlerinin yönettiği departmanları getir
+        if self.role == UserRole.DIRECTOR:
+            # DirectorManagerMapping tablosundan bu direktörün yönettiği bölge müdürlerini al
+            director_mappings = DirectorManagerMapping.query.filter_by(director_id=self.id).all()
+            
+            for mapping in director_mappings:
+                manager = mapping.manager
+                if manager and manager.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
+                    # Bu çoklu departman yöneticisinin yönettiği departmanları al
+                    manager_dept_mappings = UserDepartmentMapping.query.filter_by(user_id=manager.id).all()
+                    for dept_mapping in manager_dept_mappings:
+                        if dept_mapping.department and dept_mapping.department.is_active:
+                            departments.append(dept_mapping.department)
+            
+            # Log kayıtları ekle
+            try:
+                from flask import current_app
+                current_app.logger.debug(f"Direktör {self.username} için {len(director_mappings)} bölge müdürü eşleştirmesi bulundu")
+                current_app.logger.debug(f"Direktör {self.username} için toplam departman sayısı: {len(departments)}")
+            except:
+                pass  # Flask context yoksa log kaydı yapma
             
         # Tekil bir liste haline getir (aynı departmanı iki kez listelemeyi önle)
         unique_departments = []
@@ -230,8 +259,8 @@ class User(UserMixin, db.Model):
             dept = Department.query.get(department_id)
             return dept and dept.manager_id == self.id
             
-        # Grup yöneticisi ise
-        if self.role == UserRole.GROUP_MANAGER:
+        # Grup yöneticisi, Projeler Kalite Takip, Şubeler Kalite Takip rolleri ise
+        if self.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             # Departmanın bağlı olduğu grup
             dept = Department.query.get(department_id)
             if not dept:
@@ -249,6 +278,13 @@ class User(UserMixin, db.Model):
                 group = DepartmentGroup.query.get(gd.group_id)
                 if group and group.manager_id == self.id:
                     return True
+        
+        # Direktör ise - altındaki bölge müdürlerinin yönettiği departmanları yönetebilir
+        if self.role == UserRole.DIRECTOR:
+            # Bu direktörün yönettiği tüm departmanları kontrol et
+            managed_departments = self.get_managed_departments()
+            managed_dept_ids = [dept.id for dept in managed_departments]
+            return department_id in managed_dept_ids
         
         return False
     
@@ -369,7 +405,9 @@ class DOF(db.Model):
     def type_name(self):
         types = {
             DOFType.CORRECTIVE: "Düzeltici Faaliyet",
-            DOFType.PREVENTIVE: "Önleyici Faaliyet"
+            DOFType.PREVENTIVE: "Önleyici Faaliyet",
+            DOFType.IMPROVEMENT: "İyileştirme Talebi",
+            DOFType.CORRECTIVE_REQUEST: "Düzeltici Faaliyet Talebi"
         }
         return types.get(self.dof_type, "Bilinmiyor")
     

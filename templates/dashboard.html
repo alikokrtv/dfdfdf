@@ -151,8 +151,8 @@
     <div>
         <h1 class="h2">Dashboard</h1>
         
-        <!-- Bölge Müdürü için Gelişmiş Departman Filtresi -->
-        {% if current_user.role == 3 and managed_departments|length > 0 %}
+        <!-- Çoklu Departman Yöneticisi için Gelişmiş Departman Filtresi -->
+        {% if (current_user.role == 3 or current_user.role == 8 or current_user.role == 9) and managed_departments|length > 0 %}
         <div class="mt-2">
             <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedDepartmentFilter" aria-expanded="false" aria-controls="advancedDepartmentFilter">
                 <i class="fas fa-filter me-1"></i> 

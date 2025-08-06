@@ -1,34 +1,14 @@
 import os
 import logging
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase
-from flask_login import LoginManager
-from flask_mail import Mail
-from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_wtf.csrf import CSRFProtect
-from flask_migrate import Migrate
-from apscheduler.schedulers.background import BackgroundScheduler
+
+# Import all extensions from extensions module to avoid circular imports
+from extensions import db, login_manager, mail, socketio, csrf, scheduler, migrate
 
 # Loglama ayarları
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-class Base(DeclarativeBase):
-    pass
-
-# Veritabanı ve uygulama yapılandırması
-db = SQLAlchemy(model_class=Base)
-login_manager = LoginManager()
-
-# Mail yapılandırmasını sağlam bir şekilde yapılandır
-mail = Mail()
-
-socketio = SocketIO()
-csrf = CSRFProtect()
-scheduler = BackgroundScheduler()
-migrate = Migrate()
 
 # Flask uygulamasını oluştur
 app = Flask(__name__)
@@ -111,24 +91,17 @@ def load_email_settings():
 csrf.init_app(app)
 socketio.init_app(app)
 
-# Modelleri yükle
+# Veritabanını kontrol et
 with app.app_context():
     try:
-        import models
         # PING veritabanını kontrol eder ve bağlantıyı tazelemeye yardımcı olur
         engine = db.get_engine()
-        if hasattr(engine, 'execute'):
-            engine.execute('SELECT 1')
-        else:
-            with engine.connect() as conn:
-                conn.execute('SELECT 1')
+        with engine.connect() as conn:
+            conn.execute(db.text('SELECT 1'))
                 
         logger.info("Veritabanı bağlantısı başarıyla kontrol edildi.")
         db.create_all()
         logger.info("Tüm veritabanı tabloları başarıyla oluşturuldu.")
-        
-        # E-posta ayarlarını veritabanından yükle
-        load_email_settings()
     except Exception as e:
         logger.error(f"Veritabanı tabloları oluşturulurken hata: {str(e)}")
         
@@ -148,13 +121,35 @@ with app.app_context():
         logger.info("DirectorManagerMapping modelini manuel olarak oluşturmak için SQL kodu:")
         logger.info(table_create_sql)
 
-# Kullanıcı yükleyiciyi tanımla
+# Rotaları lazy import ile kaydet
+def register_blueprints():
+    from routes.auth import auth_bp
+    from routes.dof import dof_bp
+    from routes.admin import admin_bp
+    from routes.api import api_bp
+    from routes.feedback import feedback_bp
+    from routes.setup import setup_bp
+    from routes.activity import activity_bp
+    from routes.notifications import notifications_bp
+    from routes.thank_you import thank_you_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(dof_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(feedback_bp)
+    app.register_blueprint(setup_bp)
+    app.register_blueprint(activity_bp)
+    app.register_blueprint(notifications_bp)
+    app.register_blueprint(thank_you_bp, url_prefix='/thank-you')
+
+# Kullanıcı yükleyiciyi tanımla (routes'tan sonra)
 @login_manager.user_loader
 def load_user(user_id):
     from models import User
     return User.query.get(int(user_id))
 
-# Jinja2 için global değişkenler
+# Jinja2 için global değişkenler (routes'tan sonra)
 @app.context_processor
 def inject_models():
     from models import Notification
@@ -162,26 +157,15 @@ def inject_models():
         "Notification": Notification
     }
 
-# Rotaları kaydet
-from routes.auth import auth_bp
-from routes.dof import dof_bp
-from routes.admin import admin_bp
-from routes.api import api_bp
-from routes.feedback import feedback_bp
-from routes.setup import setup_bp
-from routes.activity import activity_bp
-from routes.notifications import notifications_bp
-from routes.thank_you import thank_you_bp
+# Blueprint'leri kaydet
+register_blueprints()
 
-app.register_blueprint(auth_bp)
-app.register_blueprint(dof_bp)
-app.register_blueprint(admin_bp)
-app.register_blueprint(api_bp)
-app.register_blueprint(feedback_bp)
-app.register_blueprint(setup_bp)
-app.register_blueprint(activity_bp)
-app.register_blueprint(notifications_bp)
-app.register_blueprint(thank_you_bp, url_prefix='/thank-you')
+# E-posta ayarlarını veritabanından yükle (routes'tan sonra)
+try:
+    load_email_settings()
+    logger.info("✅ E-posta ayarları başarıyla yüklendi")
+except Exception as e:
+    logger.error(f"E-posta ayarları yüklenirken hata oluştu: {str(e)}")
 
 # E-posta zamanlayıcısını başlat
 try:

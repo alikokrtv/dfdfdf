@@ -162,6 +162,14 @@
 {% block extra_js %}
 <script>
     $(document).ready(function() {
+        console.log('Document ready!');
+        
+        // HTML elementlerini kontrol et
+        console.log('HTML yapısı kontrol:');
+        console.log('single-department-section:', document.getElementById('single-department-section'));
+        console.log('managed-departments-section:', document.getElementById('managed-departments-section'));
+        console.log('managed-managers-section:', document.getElementById('managed-managers-section'));
+        
         // Select2 initalize
         $('.select2').select2({
             theme: 'bootstrap4',
@@ -169,35 +177,93 @@
             width: '100%'
         });
         
+        // Basit test - sayfa yüklendiğinde konsola mesaj yaz
+        console.log('JavaScript yüklendi ve çalışıyor!');
+        
         // Role değiştiğinde departman seçiminin görünürlüğünü ayarla
-        $('#role').change(function() {
-            const role = $(this).val();
+        // Select2 için hem normal change hem de select2:select eventlerini dinle
+        function handleRoleChange() {
+            const role = $('#role').val();
+            console.log('ROL DEĞİŞTİ! Seçilen rol değeri:', role, typeof role);
+            console.log('Rol değeri karşılaştırma test:', role === '8', role === 8, role == 8, role == '8');
+            
             const singleDeptSection = $('#single-department-section');
             const multiDeptSection = $('#managed-departments-section');
             const multiManagersSection = $('#managed-managers-section');
             
             // Rol bazlı görünürlük ayarı
-            if (role == '4' || role == '7') { // Departman Yöneticisi veya Franchise Departman Yöneticisi
+            console.log('Rol değişti:', role);
+            console.log('HTML ID kontrolleri:', {
+                'single-department-section exists': $('#single-department-section').length,
+                'managed-departments-section exists': $('#managed-departments-section').length,
+                'managed-managers-section exists': $('#managed-managers-section').length
+            });
+            
+            // Tüm departman bölümlerini önce gizleyelim
+            singleDeptSection.hide();
+            multiDeptSection.hide();
+            multiManagersSection.hide();
+            
+            // Sonra gerekirse gösterelim
+            // Rol değerini hem string hem integer olarak kontrol et
+            const roleInt = parseInt(role);
+            
+            // Departman Yöneticisi veya Franchise Departman Yöneticisi
+            if (roleInt === 4 || roleInt === 7) {
                 singleDeptSection.show();
-                multiDeptSection.hide();
-                multiManagersSection.hide();
-            } else if (role == '3' || role == '8' || role == '9') { // Bölge Müdürü, Projeler Kalite Takip, Şubeler Kalite Takip
+                console.log('Rol 4/7: Tekli departman gösteriliyor');
+            }
+            // Bölge Müdürü VEYA Saha Kalite Projeler VEYA Saha Kalite Şubeler - HEPSİ AYNI DAVRANACAK
+            else if (roleInt === 3 || roleInt === 8 || roleInt === 9) {
+                console.log('SAHA KALİTE VEYA BÖLGE MÜDÜRÜ SEÇİLDİ! Rol:', role, 'RoleInt:', roleInt);
                 singleDeptSection.hide();
                 multiDeptSection.show();
-                multiManagersSection.hide();
                 $('#department').val('0');
-            } else if (role == '6') { // Direktör
+                console.log('Rol 3/8/9: Çoklu departman gösteriliyor - Bölge Müdürü ve Saha Kalite rolleri');
+                
+                // Zorla göster
+                $('#managed-departments-section').css({
+                    'display': 'block !important',
+                    'visibility': 'visible'
+                });
+            }
+            // Direktör
+            else if (roleInt === 6) {
                 singleDeptSection.hide();
-                multiDeptSection.hide(); // Departman seçimini kaldırdık
+                multiDeptSection.show();
                 multiManagersSection.show();
                 $('#department').val('0');
-            } else { // Admin ve Kalite Yöneticisi
-                singleDeptSection.hide();
-                multiDeptSection.hide();
-                multiManagersSection.hide();
-                $('#department').val('0');
+                console.log('Rol 6: Çoklu departman ve müdür gösteriliyor');
             }
-        }).trigger('change');
+            // Admin ve Kalite Yöneticisi
+            else {
+                $('#department').val('0');
+                console.log('Diğer roller: Hepsi gizleniyor');
+            }
+            
+            // Kontrol edelim
+            setTimeout(function() {
+                console.log('Departman alanı gösteriliyor mu:', {
+                    'single-department-section': singleDeptSection.is(':visible'),
+                    'managed-departments-section': multiDeptSection.is(':visible'),
+                    'managed-managers-section': multiManagersSection.is(':visible')
+                });
+            }, 100);
+            
+            // Kontrol edelim
+            console.log('Final kontrol - managed-departments-section görünür mü?', $('#managed-departments-section').is(':visible'));
+        }
+        
+        // Event listener'ları ekle
+        $('#role').on('change', handleRoleChange);
+        $('#role').on('select2:select', handleRoleChange);
+        
+        // Sayfa yüklenince mevcut rol değerine göre ayarla
+        const currentRole = $('#role').val();
+        if (currentRole) {
+            console.log('Sayfa yüklenirken mevcut rol:', currentRole);
+            handleRoleChange();
+        }
         
         // Select2 çoklu seçim ayarları
         $('#managed_departments').select2({

@@ -2069,8 +2069,8 @@ logging.basicConfig(level=logging.DEBUG)
 ## 📞 Destek ve İletişim
 
 ### Teknik Destek
-- **E-posta**: technical-support@company.com
-- **Dokümantasyon**: [Wiki sayfası]
+- **E-posta**: alikokrtv@gmail.com
+- **Dokümantasyon**:
 - **Bug Raporları**: GitHub Issues
 
 ### Özellik Talepleri

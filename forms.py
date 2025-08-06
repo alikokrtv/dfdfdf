@@ -39,7 +39,9 @@ class RegisterForm(FlaskForm):
             (UserRole.GROUP_MANAGER, 'Bölge Müdürü'),
             (UserRole.DEPARTMENT_MANAGER, 'Departman Yöneticisi'),
             (UserRole.FRANCHISE_DEPARTMENT_MANAGER, 'Franchise Departman Yöneticisi'),
-            (UserRole.DIRECTOR, 'Direktör')
+            (UserRole.DIRECTOR, 'Direktör'),
+            (UserRole.PROJECTS_QUALITY_TRACKING, 'Projeler Kalite Takip'),
+            (UserRole.BRANCHES_QUALITY_TRACKING, 'Şubeler Kalite Takip')
         ]
         departments = Department.query.filter_by(is_active=True).all()
         self.department.choices = [(0, 'Departman Seçiniz')] + [(d.id, d.name) for d in departments]
@@ -52,7 +54,7 @@ class RegisterForm(FlaskForm):
         
         # is_active property yerine veritabanı kolonu olan active kullan
         group_managers = User.query.filter(
-            User.role == UserRole.GROUP_MANAGER,
+            User.role.in_([UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]),
             User.active == True
         ).all()
         
@@ -62,6 +64,25 @@ class RegisterForm(FlaskForm):
         
         # Seçenekleri hazırla
         self.managed_managers.choices = [(u.id, f"{u.first_name} {u.last_name}") for u in group_managers]
+        
+        # Kullanıcı düzenlenirken mevcut departman ve bölge müdürü mappinglerini yükle
+        # NOT: Bu işlem admin.py'de de yapılıyor, o yüzden forms.py'de yapmayalım
+        # Çifte yükleme conflict'i olabiliyor
+        if False:  # Geçici olarak devre dışı
+            if self.user_id:
+                user = User.query.get(self.user_id)
+                if user:
+                    # Çoklu departman yöneticileri için mevcut departman mappinglerini yükle
+                    if user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
+                        current_dept_ids = [mapping.department_id for mapping in user.managed_department_mappings]
+                        self.managed_departments.data = current_dept_ids
+                        current_app.logger.info(f"Forms.py - Kullanıcı {user.username} için mevcut departmanlar yüklendi: {current_dept_ids}")
+                    
+                    # Direktör için mevcut bölge müdürü mappinglerini yükle
+                    elif user.role == UserRole.DIRECTOR:
+                        current_manager_ids = [mapping.manager_id for mapping in user.managed_managers_links]
+                        self.managed_managers.data = current_manager_ids
+                        current_app.logger.info(f"Forms.py - Direktör {user.username} için mevcut bölge müdürleri yüklendi: {current_manager_ids}")
     
     def validate_username(self, username):
         user = User.query.filter_by(username=username.data).first()
@@ -130,9 +151,12 @@ class DOFForm(FlaskForm):
         self.user = kwargs.pop('current_user', None)  # Mevcut kullanıcıyı al
         super(DOFForm, self).__init__(*args, **kwargs)
         
-        # DÖF oluşturma sırasında termin tarihi alanını formdan kaldır
+        # DÖF oluşturma sırasında termin tarihi alanını gizle (güvenli yöntem)
         if self.form_type == 'create':
-            del self.due_date
+            # Field'ı silmek yerine, render_kw kullanarak gizleyelim
+            if hasattr(self, 'due_date') and self.due_date:
+                self.due_date.render_kw = {'style': 'display: none;'}
+                self.due_date.validators = []  # Validasyon kurallarını kaldır
             
         self.dof_type.choices = [
             (DOFType.CORRECTIVE, 'Düzeltici Faaliyet'),
@@ -171,11 +195,19 @@ class DOFForm(FlaskForm):
         
         # Kullanıcı rolüne göre departman seçenekleri ayarlamaları
         all_departments = Department.query.filter_by(is_active=True).all()
-        self.department.choices = [(0, 'Departman Seçiniz')] + [(d.id, d.name) for d in all_departments]
+        
+        # Kullanıcının kendi departmanını hariç tutma (DÖF oluşturma sırasında)
+        if self.form_type == 'create' and self.user and self.user.department_id:
+            # Kendi departmanını hariç tut
+            filtered_departments = [d for d in all_departments if d.id != self.user.department_id]
+            self.department.choices = [(0, 'Departman Seçiniz')] + [(d.id, d.name) for d in filtered_departments]
+        else:
+            # Düzenleme durumunda veya departmanı yoksa tüm departmanları göster
+            self.department.choices = [(0, 'Departman Seçiniz')] + [(d.id, d.name) for d in all_departments]
         
         # Bölge müdürü için özel departman seçim listesi
         managed_dept_list = []
-        if self.user and self.user.role == UserRole.GROUP_MANAGER:
+        if self.user and self.user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             # Sadece yönettiği departmanları göster
             for mapping in self.user.managed_department_mappings:
                 dept = Department.query.get(mapping.department_id)
@@ -279,7 +311,9 @@ class WorkflowStepForm(FlaskForm):
             (UserRole.QUALITY_MANAGER, 'Kalite Yöneticisi'),
             (UserRole.DEPARTMENT_MANAGER, 'Departman Yöneticisi'),
             (UserRole.FRANCHISE_DEPARTMENT_MANAGER, 'Franchise Departman Yöneticisi'),
-            (UserRole.USER, 'Kullanıcı')
+            (UserRole.USER, 'Kullanıcı'),
+            (UserRole.PROJECTS_QUALITY_TRACKING, 'Projeler Kalite Takip'),
+            (UserRole.BRANCHES_QUALITY_TRACKING, 'Şubeler Kalite Takip')
         ]
         
         from models import DOFStatus
@@ -318,7 +352,7 @@ class DOFResolveForm(FlaskForm):
 class QualityReviewForm(FlaskForm):
     """Kalite yöneticisi değerlendirme formu"""
     
-    department = SelectField('Atanacak Departman', coerce=int, validators=[DataRequired(message='Departman seçimi zorunludur')])
+    department = SelectField('Atanacak Departman', coerce=int, validators=[Optional()])
     comment = TextAreaField('Değerlendirme', validators=[Optional()])
     
     def __init__(self, *args, **kwargs):

@@ -1194,10 +1194,16 @@ def can_user_edit_dof(user, dof):
                 return True
         
         # Veya DÖF'u oluşturan kişinin departmanı kaynak departman ise
-        creator = User.query.get(dof.created_by)
-        if creator and creator.department_id == user.department_id:
-            if dof.status in [10, 11]:  # 10: COMPLETED, 11: SOURCE_REVIEW
-                return True
+        # Circular import'u önlemek için lazy import kullan
+        try:
+            from models import User
+            creator = User.query.get(dof.created_by)
+            if creator and creator.department_id == user.department_id:
+                if dof.status in [10, 11]:  # 10: COMPLETED, 11: SOURCE_REVIEW
+                    return True
+        except ImportError:
+            current_app.logger.error("User modeli import edilemedi")
+            pass
     
     return False
 

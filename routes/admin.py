@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, flash, redirect, url_for, request, abort, current_app
 from flask_login import login_required, current_user
-from app import db, mail
+# app, db, mail import'u blueprint tanımından sonra yapılacak
 from models import User, Department, SystemLog, DOF, DOFAction, WorkflowDefinition, WorkflowStep, UserRole, DOFStatus, UserDepartmentMapping, DirectorManagerMapping, EmailTrack
 from forms import RegisterForm, DepartmentForm, WorkflowDefinitionForm, WorkflowStepForm, EmailSettingsForm
 from utils import log_activity, get_department_stats
@@ -9,6 +9,9 @@ from sqlalchemy import func, desc
 import os
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+# app, db, mail'i blueprint tanımından sonra import et
+from app import db, mail
 
 # Admin yetkisi gerektiren işlemler için decorator
 def admin_required(f):
@@ -75,6 +78,9 @@ def edit_user(user_id):
     del form.confirm_password
     
     if form.validate_on_submit():
+        current_app.logger.info(f"Form validation başarılı - Kullanıcı: {user.username}")
+        current_app.logger.info(f"Form managed_departments.data: {form.managed_departments.data}")
+        
         user.username = form.username.data
         user.email = form.email.data
         user.first_name = form.first_name.data
@@ -92,35 +98,39 @@ def edit_user(user_id):
             # Direktör rolünden departman yöneticisine geçişte, direktör-bölge müdürü ilişkilerini temizle
             for mapping in user.managed_managers_links:
                 db.session.delete(mapping)
-        elif user.role == UserRole.GROUP_MANAGER:
-            user.department_id = None  # Grup yöneticisi doğrudan bir departmana bağlı değil
+        elif user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
+            user.department_id = None  # Bu roller doğrudan bir departmana bağlı değil
             
             try:
                 # Önce mevcut departman ilişkilerini temizle
                 for mapping in user.managed_department_mappings:
                     db.session.delete(mapping)
                 
-                # Direktör rolünden bölge müdürü rolüne geçişte, direktör-bölge müdürü ilişkilerini temizle
+                # Direktör rolünden bu rollere geçişte, direktör-bölge müdürü ilişkilerini temizle
                 for mapping in user.managed_managers_links:
                     db.session.delete(mapping)
                 
                 # Yeni seçilen departmanları ekle
                 if form.managed_departments.data:
-                    current_app.logger.info(f"Bölge Müdürü için departman güncelleme: {form.managed_departments.data}")
+                    current_app.logger.info(f"Çoklu departman yönetici ({user.role_name}) için departman güncelleme: {form.managed_departments.data}")
                     for dept_id in form.managed_departments.data:
                         # Departman ID'nin integer olduğundan emin ol
                         dept_id = int(dept_id) if not isinstance(dept_id, int) else dept_id
+                        current_app.logger.info(f"Departman ID işleniyor: {dept_id}")
                         
                         # Departmanın varlığını kontrol et
                         dept = Department.query.get(dept_id)
                         if dept:
                             mapping = UserDepartmentMapping(user_id=user.id, department_id=dept_id)
                             db.session.add(mapping)
+                            current_app.logger.info(f"Departman mapping eklendi: User={user.id}, Dept={dept_id}")
                         else:
                             current_app.logger.error(f"Departman bulunamadı ID: {dept_id}")
+                else:
+                    current_app.logger.info(f"Form managed_departments.data boş: {form.managed_departments.data}")
             except Exception as e:
                 db.session.rollback()
-                current_app.logger.error(f"Bölge müdürü departman güncelleme hatası: {str(e)}")
+                current_app.logger.error(f"Çoklu departman yönetici departman güncelleme hatası: {str(e)}")
                 flash(f'Kullanıcı bilgileri güncellendi ancak departman atama işlemi sırasında hata: {str(e)}', 'warning')
                 return redirect(url_for('admin.users'))
         elif user.role == UserRole.DIRECTOR:
@@ -147,16 +157,16 @@ def edit_user(user_id):
                         else:
                             current_app.logger.error(f"Departman bulunamadı ID: {dept_id}")
                 
-                # Direktör için bölge müdürü ilişkilerini kaydet
+                # Direktör için çoklu departman yöneticisi ilişkilerini kaydet
                 if form.managed_managers.data:
-                    current_app.logger.info(f"Direktör için bölge müdürü güncelleme: {form.managed_managers.data}")
+                    current_app.logger.info(f"Direktör için çoklu departman yöneticisi güncelleme: {form.managed_managers.data}")
                     for manager_id in form.managed_managers.data:
                         manager_id = int(manager_id) if not isinstance(manager_id, int) else manager_id
                         manager = User.query.get(manager_id)
-                        if manager and manager.role == UserRole.GROUP_MANAGER:
+                        if manager and manager.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
                             mapping = DirectorManagerMapping(director_id=user.id, manager_id=manager_id)
                             db.session.add(mapping)
-                            current_app.logger.info(f"Direktör-Bölge Müdürü ilişkisi güncellendi: Direktör={user.id}, Bölge Müdürü={manager_id}")
+                            current_app.logger.info(f"Direktör-Çoklu Departman Yöneticisi ilişkisi güncellendi: Direktör={user.id}, Yönetici={manager_id}")
                         else:
                             current_app.logger.error(f"Bölge müdürü bulunamadı veya rolü uygun değil ID: {manager_id}")
             except Exception as e:
@@ -175,7 +185,15 @@ def edit_user(user_id):
                 db.session.delete(mapping)
         
         user.updated_at = datetime.now()
-        db.session.commit()
+        
+        try:
+            db.session.commit()
+            current_app.logger.info(f"Kullanıcı {user.username} başarıyla database'e kaydedildi")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Database commit hatası: {str(e)}")
+            flash(f'Kullanıcı kaydedilirken hata oluştu: {str(e)}', 'danger')
+            return redirect(url_for('admin.users'))
         
         # Log kaydı oluştur
         log_activity(
@@ -193,10 +211,11 @@ def edit_user(user_id):
     if user.department_id:
         form.department.data = user.department_id
     
-    # Grup yöneticisi ise yönetilen departmanları doldur
-    if user.role == UserRole.GROUP_MANAGER:
+    # Çoklu departman yöneticileri için yönetilen departmanları doldur
+    if user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
         managed_dept_ids = [mapping.department_id for mapping in user.managed_department_mappings]
         form.managed_departments.data = managed_dept_ids
+        current_app.logger.info(f"Kullanıcı {user.username} ({user.role_name}) için mevcut departmanlar yüklendi: {managed_dept_ids}")
     
     # Direktör ise yönetilen departmanları ve bölge müdürlerini doldur
     elif user.role == UserRole.DIRECTOR:
@@ -1444,9 +1463,11 @@ def email_scheduler():
         elif action == 'test':
             try:
                 test_daily_report()
-                flash('🧪 Test raporu gönderildi', 'success')
+                flash('🧪 Test raporu başarıyla gönderildi', 'success')
+                current_app.logger.info("✅ Manual test raporu gönderildi")
             except Exception as e:
                 flash(f'❌ Test hatası: {str(e)}', 'danger')
+                current_app.logger.error(f"❌ Manual test hatası: {str(e)}")
         
         elif action == 'preview':
             # Önizleme modunda - sadece bilgileri göster, gönderme

@@ -55,6 +55,12 @@ class AuthService:
                 managed_dept_ids = [dept.id for dept in managed_departments]
                 return dof.department_id in managed_dept_ids
             
+            # Direktörler altındaki bölge müdürlerinin yönettiği departmanların DÖF'lerini görebilir
+            if user.role == UserRole.DIRECTOR:
+                managed_departments = user.get_managed_departments()
+                managed_dept_ids = [dept.id for dept in managed_departments]
+                return dof.department_id in managed_dept_ids
+            
             # Diğer tüm durumlar için yetki yok
             return False
             
@@ -107,16 +113,29 @@ class AuthService:
                 else:
                     return query.filter(DOF.department_id == user.department_id)
             
-            # Bölge müdürleri sadece yönettikleri departmanların DÖF'lerini görebilir
-            elif user.role == UserRole.GROUP_MANAGER:
+            # Çoklu departman yöneticileri sadece yönettikleri departmanların DÖF'lerini görebilir
+            elif user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
                 managed_departments = user.get_managed_departments()
                 managed_dept_ids = [dept.id for dept in managed_departments]
                 
                 if managed_dept_ids:
-                    current_app.logger.debug(f"Bölge müdürü {user.username} için departman filtresi: {managed_dept_ids}")
+                    current_app.logger.debug(f"Çoklu departman yöneticisi ({user.role_name}) {user.username} için departman filtresi: {managed_dept_ids}")
                     return query.filter(DOF.department_id.in_(managed_dept_ids))
                 else:
-                    current_app.logger.warning(f"Bölge müdürü {user.username} için yönetilen departman bulunamadı")
+                    current_app.logger.warning(f"Çoklu departman yöneticisi ({user.role_name}) {user.username} için yönetilen departman bulunamadı")
+                    # Hiçbir departman yönetmiyorsa boş sorgu döndür
+                    return query.filter(DOF.id == -1)  # Hiçbir zaman eşleşmeyecek bir filtre
+            
+            # Direktörler altındaki bölge müdürlerinin yönettiği departmanların DÖF'lerini görebilir
+            elif user.role == UserRole.DIRECTOR:
+                managed_departments = user.get_managed_departments()
+                managed_dept_ids = [dept.id for dept in managed_departments]
+                
+                if managed_dept_ids:
+                    current_app.logger.debug(f"Direktör {user.username} için departman filtresi: {managed_dept_ids}")
+                    return query.filter(DOF.department_id.in_(managed_dept_ids))
+                else:
+                    current_app.logger.warning(f"Direktör {user.username} için yönetilen departman bulunamadı")
                     # Hiçbir departman yönetmiyorsa boş sorgu döndür
                     return query.filter(DOF.id == -1)  # Hiçbir zaman eşleşmeyecek bir filtre
             

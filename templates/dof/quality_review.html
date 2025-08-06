@@ -121,19 +121,22 @@
             <input type="hidden" name="submit_action" id="submit_action" value="">
             
             <div class="row mt-5">
-                <div class="col-md-8 mx-auto d-flex justify-content-center gap-4">
+                <div class="col-md-10 mx-auto d-flex justify-content-center gap-3">
                     {% if dof.status in [3, 4] %}
                         <!-- Sadece ATANDI veya DEVAM EDİYOR durumundaki DÖF'ler için departman değişikliği butonu göster -->
-                        <button type="button" class="btn btn-warning btn-lg px-5 py-3 action-btn" data-action="change_department" id="changeDeptBtn">
+                        <button type="button" class="btn btn-warning btn-lg px-4 py-3 action-btn" data-action="change_department" id="changeDeptBtn">
                             <i class="fas fa-exchange-alt me-2"></i> Departmanı Değiştir
                         </button>
                     {% else %}
                         <!-- Normal inceleme işlemi butonları -->
-                        <button type="button" class="btn btn-success btn-lg px-5 py-3 action-btn" data-action="approve" id="approveBtn">
+                        <button type="button" class="btn btn-success btn-lg px-4 py-3 action-btn" data-action="approve" id="approveBtn">
                             <i class="fas fa-check-circle me-2"></i> Onayla ve Ata
                         </button>
-                        <button type="button" class="btn btn-warning btn-lg px-5 py-3 action-btn" data-action="new_dof" id="newDofBtn">
+                        <button type="button" class="btn btn-warning btn-lg px-4 py-3 action-btn" data-action="new_dof" id="newDofBtn">
                             <i class="fas fa-plus-circle me-2"></i> Yeni DÖF Açılsın
+                        </button>
+                        <button type="button" class="btn btn-danger btn-lg px-4 py-3 action-btn" data-action="close_unnecessary" id="closeUnnecessaryBtn">
+                            <i class="fas fa-times-circle me-2"></i> Gereksiz - Direk Kapat
                         </button>
                     {% endif %}
                 </div>
@@ -250,6 +253,29 @@
             
             // İşlem türünü hidden input'a ata
             $('#submit_action').val('approve');
+            
+            // Butonu devre dışı bırak ve form gönder
+            $(this).prop('disabled', true);
+            form.submit();
+        });
+        
+        // "Gereksiz - Direk Kapat" butonuna tıklandığında
+        $('#closeUnnecessaryBtn').on('click', function() {
+            // Form doğrulama kontrolü - sadece yorum gerekli
+            var form = document.getElementById('qualityReviewForm');
+            
+            if (!form.comment.value) {
+                alert('Lütfen DOF\'ün neden gereksiz olduğunu açıklayınız!');
+                return false;
+            }
+            
+            // Kullanıcıdan onay al
+            if (!confirm('Bu DOF gereksiz olarak değerlendirilip kapatılacak. Emin misiniz?')) {
+                return false;
+            }
+            
+            // İşlem türünü hidden input'a ata
+            $('#submit_action').val('close_unnecessary');
             
             // Butonu devre dışı bırak ve form gönder
             $(this).prop('disabled', true);

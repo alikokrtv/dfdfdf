@@ -236,6 +236,24 @@ def notify_for_dof_event(dof_id, event_type, actor_id=None, custom_message=None)
                 notify_users.append(qm)
                 current_app.logger.info(f"Kalite yöneticisi bildirim listesine eklendi: {qm.full_name}")
         
+        # 5. Direktörler - altındaki bölge müdürlerinin yönettiği departmanların DOF'leri için bildirim
+        if dof.department_id:
+            # Bu departmanı yöneten bölge müdürlerini bul
+            from models import UserDepartmentMapping, DirectorManagerMapping
+            
+            dept_mappings = UserDepartmentMapping.query.filter_by(department_id=dof.department_id).all()
+            for mapping in dept_mappings:
+                group_manager = mapping.user
+                if group_manager and group_manager.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
+                    # Bu çoklu departman yöneticisini yöneten direktörleri bul
+                    director_mappings = DirectorManagerMapping.query.filter_by(manager_id=group_manager.id).all()
+                    for dir_mapping in director_mappings:
+                        director = dir_mapping.director
+                        if director and director.role == UserRole.DIRECTOR and director.active:
+                            if (not actor_id or director.id != actor_id) and director not in notify_users:
+                                notify_users.append(director)
+                                current_app.logger.info(f"Direktör bildirim listesine eklendi: {director.full_name}")
+        
         # Bildirimleri gönder
         notification_count = 0
         for user in notify_users:

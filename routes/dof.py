@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from models import DOF, DOFAction, Department, Attachment, ActionAttachment, User, Notification, UserRole, DOFStatus, DOFType, DOFSource, UserActivity, DepartmentGroup
 from forms import DOFForm, DOFActionForm, DOFResolveForm, QualityReviewForm, QualityClosureForm, SearchForm
-from app import db
+# app import'u blueprint tanımından sonra yapılacak
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 import os, uuid
@@ -180,6 +180,9 @@ def send_direct_notifications_to_quality_managers(dof_id, creator_name, dof_titl
 
 dof_bp = Blueprint('dof', __name__)
 
+# app ve db'yi blueprint tanımından sonra import et
+from app import db
+
 @dof_bp.route('/dof/<int:dof_id>/review', methods=['GET', 'POST'])
 @login_required
 def review_dof(dof_id):
@@ -273,11 +276,16 @@ def review_dof(dof_id):
                 log_action = ""
                 log_details = ""
                 
-                # Departman kontrolü - bu tüm aksiyon tipleri için gerekli
-                department = Department.query.get(form.department.data)
-                if not department:
-                    flash("Seçilen departman bulunamadı!", "danger")
-                    return render_template('dof/quality_review.html', form=form, dof=dof)
+                # Departman kontrolü - sadece departman gerektiren işlemler için
+                # "Gereksiz Kapat" seçeneğinde departman gerekli değil
+                if submit_action != 'close_unnecessary':
+                    department = Department.query.get(form.department.data)
+                    if not department:
+                        flash("Seçilen departman bulunamadı!", "danger")
+                        return render_template('dof/quality_review.html', form=form, dof=dof)
+                else:
+                    # Gereksiz kapat için departman gerekli değil
+                    department = None
                 
                 # Sadece departman değişikliği mi yapılıyor kontrol et
                 is_department_change_only = dof.status in [DOFStatus.ASSIGNED, DOFStatus.IN_PROGRESS]
@@ -566,6 +574,30 @@ def review_dof(dof_id):
                     log_action = "DÖF Kapatma"
                     log_details = f"DÖF #{dof.id} kapatıldı, yeni DÖF açılması talep edildi."
                 
+                # Gereksiz DÖF - Direk Kapatma
+                elif submit_action == 'close_unnecessary':
+                    # DÖF'ü gereksiz olarak doğrudan kapat
+                    dof.status = DOFStatus.CLOSED
+                    dof.review_comment = form.comment.data + "\n\nGereksiz DOF olarak değerlendirildi ve kapatıldı."
+                    dof.closed_at = datetime.now()
+                    
+                    # DÖF oluşturucuya bildirim gönder
+                    notification = Notification(
+                        user_id=dof.created_by,
+                        dof_id=dof.id,
+                        message=f"DÖF #{dof.id} kalite incelemesi sonucu gereksiz bulunarak kapatıldı."
+                    )
+                    db.session.add(notification)
+                    
+                    current_app.logger.info(f"DÖF #{dof.id} gereksiz olarak değerlendirilip kapatıldı")
+                    
+                    # Aksiyon kaydı için bilgiler
+                    action_message = f"Gereksiz DÖF olarak değerlendirildi ve kapatıldı: {form.comment.data}"
+                    new_status = DOFStatus.CLOSED
+                    success_message = "DÖF gereksiz olarak değerlendirilip kapatıldı."
+                    log_action = "DÖF Gereksiz Kapatma"
+                    log_details = f"DÖF #{dof.id} gereksiz olarak kapatıldı."
+                
                 # Form dolduruldu ancak desteklenmeyen bir buton kullanıldı
                 else:
                     flash("Desteklenmeyen işlem tipi. Lütfen doğru işlemi seçin.", "warning")
@@ -590,7 +622,7 @@ def review_dof(dof_id):
                     dof.updated_at = datetime.now()
                     
                     # Veritabanındaki departmanı tekrar kontrol et ve doğru olduğundan emin ol
-                    if submit_action == 'change_department':
+                    if submit_action == 'change_department' and department:
                         current_app.logger.info(f"Son kontrol - değiştirilen departman ID = {dof.department_id}, departman = {department.name}")
                         # Departman değişikliğinde değişikliğin doğru olduğundan emin olmak için bir kez daha set et
                         dof.department_id = department.id
@@ -752,7 +784,7 @@ def dashboard(department_id=None):
     # URL'den departmanlara göre filtreleme kontrolü
     departments_param = request.args.get('departments')
     
-    if departments_param and current_user.role == UserRole.GROUP_MANAGER:
+    if departments_param and current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
         # Çoklu departman filtreleme - departments=1,2,3 formatında
         try:
             # Virgülle ayrılmış ID'leri parse et
@@ -772,7 +804,7 @@ def dashboard(department_id=None):
             selected_departments = []
     
     # Eski format (tek departman ID'si) için geriye dönük uyumluluk
-    elif department_id and current_user.role == UserRole.GROUP_MANAGER:
+    elif department_id and current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
         if department_id in managed_dept_ids:
             selected_department = Department.query.get(department_id)
             selected_departments = [department_id]
@@ -797,20 +829,25 @@ def dashboard(department_id=None):
     managed_dept_ids = []
     
     # Kullanıcının rolüne göre yönettiği departmanları getir
-    if current_user.role == UserRole.ADMIN:
-        # Admin tüm departmanları görebilir
+    if current_user.role == UserRole.ADMIN or current_user.role == UserRole.QUALITY_MANAGER:
+        # Admin ve Kalite Yöneticisi tüm departmanları görebilir
         user_departments = Department.query.filter_by(is_active=True).all()
         managed_dept_ids = [dept.id for dept in user_departments]
         
-    elif current_user.role == UserRole.DEPARTMENT_MANAGER or current_user.role == UserRole.FRANCHISE_DEPARTMENT_MANAGER or current_user.role == UserRole.FRANCHISE_DEPARTMENT_MANAGER:
+    elif current_user.role == UserRole.DEPARTMENT_MANAGER or current_user.role == UserRole.FRANCHISE_DEPARTMENT_MANAGER:
         # Departman yöneticisi veya franchise departman yöneticisi sadece kendi departmanını görür
         if current_user.department_id:
             dept = Department.query.get(current_user.department_id)
             user_departments = [dept]
             managed_dept_ids = [dept.id]
                 
-    elif current_user.role == UserRole.GROUP_MANAGER:
-        # Grup yöneticisi, grup içindeki tüm departmanları görür
+    elif current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
+        # Çoklu departman yöneticisi, yönettiği tüm departmanları görür
+        user_departments = current_user.get_managed_departments()
+        managed_dept_ids = [dept.id for dept in user_departments]
+        
+    elif current_user.role == UserRole.DIRECTOR:
+        # Direktör, altındaki bölge müdürlerinin yönettiği departmanları görür
         user_departments = current_user.get_managed_departments()
         managed_dept_ids = [dept.id for dept in user_departments]
         
@@ -822,8 +859,8 @@ def dashboard(department_id=None):
                 user_departments = [dept]
                 managed_dept_ids = [current_user.department_id]
     
-    # Eğer bölge müdürü ve seçilen departmanlar varsa, filtrelemeyi onlara göre yap
-    if current_user.role == UserRole.GROUP_MANAGER and selected_departments:
+    # Eğer çoklu departman yöneticisi ve seçilen departmanlar varsa, filtrelemeyi onlara göre yap
+    if current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING] and selected_departments:
         # Seçilen departmanları al
         user_departments = [dept for dept in managed_departments if dept.id in selected_departments]
         managed_dept_ids = selected_departments
@@ -955,9 +992,9 @@ def dashboard(department_id=None):
     upcoming_deadlines = assigned_upcoming_deadlines + created_upcoming_deadlines
     past_deadlines = assigned_overdue_deadlines + created_overdue_deadlines
     
-    # Bölge müdürü için yönetilen departman listesini ve seçili departmanı şablona gönder
+    # Çoklu departman yöneticisi için yönetilen departman listesini ve seçili departmanı şablona gönder
     managed_departments = []
-    if current_user.role == UserRole.GROUP_MANAGER:
+    if current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
         managed_departments = current_user.get_managed_departments()
     # Eksik değişkenleri tamamlama
     notifications = current_user.notifications.filter_by(is_read=False).order_by(Notification.created_at.desc()).limit(5).all()
@@ -1029,10 +1066,10 @@ def create_dof():
         dof_source = form.dof_source.data
         
         # Atanan departman ID'si - rol bazlı ata
-        if current_user.role == UserRole.GROUP_MANAGER and form.managed_departments.data:
-            # Bölge müdürü için yönetilen departmanlardan seçilen
+        if current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING] and form.managed_departments.data:
+            # Çoklu departman yöneticisi için yönetilen departmanlardan seçilen
             assigned_dept_id = form.managed_departments.data
-            current_app.logger.info(f"Bölge müdürü için yönetilen departman seçildi: {assigned_dept_id}")
+            current_app.logger.info(f"Çoklu departman yöneticisi için yönetilen departman seçildi: {assigned_dept_id}")
         else:
             # Normal seçim yoluyla belirlenen departman
             assigned_dept_id = form.department.data if form.department.data != 0 else None
@@ -1870,7 +1907,7 @@ def list_dofs():
         query = AuthService.filter_viewable_dofs(current_user, query)
         
         # Departman seçilmişse, bu departmanı görüntüleme yetkisi kontrolü
-        if dept_id and dept_id > 0 and current_user.role == UserRole.GROUP_MANAGER:
+        if dept_id and dept_id > 0 and current_user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             managed_departments = current_user.get_managed_departments()
             managed_dept_ids = [dept.id for dept in managed_departments]
             
@@ -1882,25 +1919,6 @@ def list_dofs():
         current_app.logger.error(f"DÖF listeleme yetkilendirme hatası: {str(e)}")
         # Hata durumunda güvenli tarafta kal - boş sorgu göster
         query = query.filter(DOF.id == -1)  # Hiçbir sonuç gösterme
-    if current_user.role == UserRole.GROUP_MANAGER:
-        managed_departments = current_user.get_managed_departments()
-        managed_dept_ids = [dept.id for dept in managed_departments]
-        if dept_id and dept_id > 0:
-            if dept_id not in managed_dept_ids:
-                flash('Bu departmanın DÖF\'lerini görüntüleme yetkiniz bulunmuyor.', 'warning')
-                query = query.filter(DOF.department_id.in_(managed_dept_ids))
-            else:
-                query = query.filter(DOF.department_id.in_(managed_dept_ids))
-        else:
-            query = query.filter(DOF.department_id.in_(managed_dept_ids))
-            
-            current_app.logger.debug(f"Grup yöneticisi {current_user.username} için yönetilen departmanlar: {managed_dept_ids}")
-            
-            if managed_dept_ids:
-                query = query.filter(DOF.department_id.in_(managed_dept_ids))
-            else:
-                # Yönettiği departman yoksa, boş liste göster (0 her zaman geçersiz bir ID)
-                query = query.filter(DOF.department_id == 0)
     
     # Sıralama ve sayfalama
     page = request.args.get('page', 1, type=int)
@@ -2007,30 +2025,56 @@ def edit_dof(dof_id):
     if not can_user_edit_dof(current_user, dof):
         abort(403)
         
-    # Form oluştur - form tipini 'create' olarak belirt
-    form = DOFForm(form_type='create', obj=dof)
+    # Form oluştur - form tipini 'edit' olarak belirt ve mevcut kullanıcıyı gönder
+    form = DOFForm(form_type='edit', current_user=current_user)
+    
+    # GET request için form verilerini manuel olarak doldur
+    if request.method == 'GET':
+        form.title.data = dof.title
+        form.description.data = dof.description
+        form.dof_type.data = dof.dof_type
+        form.dof_source.data = dof.dof_source
+        form.department.data = dof.department_id if dof.department_id else 0
+        form.due_date.data = dof.due_date
+        # Müşteri şikayeti alanları
+        form.channel.data = dof.channel if dof.channel else ''
+        form.complaint_date.data = dof.complaint_date
     
     if form.validate_on_submit():
         # Değişen alanları izlemek için eski değerleri sakla
         old_values = {
             'title': dof.title,
             'description': dof.description,
-            # 'priority': dof.priority, # priority field has been removed
             'department_id': dof.department_id,
             'due_date': dof.due_date,
-            'deadline': dof.deadline,
-            'solution_plan': dof.solution_plan,
             'dof_type': dof.dof_type,
-            'dof_source': dof.dof_source
+            'dof_source': dof.dof_source,
+            'channel': dof.channel,
+            'complaint_date': dof.complaint_date
         }
         
-        # Termin tarihini sakla - değiştirilmemesi lazım
+        # Termin tarihini sakla - değiştirilmemesi lazım (edit sırasında değişmemeli)
         existing_due_date = dof.due_date
         
-        # Formdaki değerleri DÖF nesnesine aktar
-        form.populate_obj(dof)
+        # Formdaki değerleri güvenli şekilde DÖF nesnesine aktar
+        dof.title = form.title.data
+        dof.description = form.description.data
+        dof.dof_type = form.dof_type.data
+        dof.dof_source = form.dof_source.data
         
-        # Termin tarihini geri yükle - asla değişmemeli
+        # Departman güncelleme (sadece geçerli değerler için)
+        if form.department.data and form.department.data != 0:
+            dof.department_id = form.department.data
+            
+        # Müşteri şikayeti alanları
+        if form.dof_source.data == 3:  # DOFSource.CUSTOMER_COMPLAINT
+            dof.channel = form.channel.data if form.channel.data else None
+            dof.complaint_date = form.complaint_date.data if form.complaint_date.data else None
+        else:
+            dof.channel = None
+            dof.complaint_date = None
+        
+        # Termin tarihini geri yükle - edit sırasında değişmemeli
         dof.due_date = existing_due_date
         
         # Değişen alanları belirle
@@ -2069,21 +2113,21 @@ def edit_dof(dof_id):
                 current_app.logger.error(f"Department update error: {str(e)}")
                 changes_details.append("Departman bilgisi güncellenirken hata oluştu")
             
-        if old_values['due_date'] != dof.due_date:
-            changed_fields.append('Son Tarih')
-            old_date = old_values['due_date'].strftime('%d.%m.%Y') if old_values['due_date'] else '-'
-            new_date = dof.due_date.strftime('%d.%m.%Y') if dof.due_date else '-'
-            changes_details.append(f"Son Tarih: {old_date} -> {new_date}")
+        # Due date edit sırasında değiştirilmemeli, bu kontrolü kaldırdık
+        # if old_values['due_date'] != dof.due_date:
+        #     changed_fields.append('Son Tarih')
+        #     old_date = old_values['due_date'].strftime('%d.%m.%Y') if old_values['due_date'] else '-'
+        #     new_date = dof.due_date.strftime('%d.%m.%Y') if dof.due_date else '-'
+        #     changes_details.append(f"Son Tarih: {old_date} -> {new_date}")
             
-        if old_values['deadline'] != dof.deadline:
-            changed_fields.append('Termin')
-            old_date = old_values['deadline'].strftime('%d.%m.%Y') if old_values['deadline'] else '-'
-            new_date = dof.deadline.strftime('%d.%m.%Y') if dof.deadline else '-'
-            changes_details.append(f"Termin: {old_date} -> {new_date}")
+        # Deadline ve solution_plan kontrolleri artık yok (old_values'da yok)
+        # if old_values['deadline'] != dof.deadline:
+        #     new_date = dof.deadline.strftime('%d.%m.%Y') if dof.deadline else '-'
+        #     changes_details.append(f"Termin: {old_date} -> {new_date}")
             
-        if old_values['solution_plan'] != dof.solution_plan:
-            changed_fields.append('Çözüm Planı')
-            changes_details.append("Çözüm planı güncellendi")
+        # if old_values['solution_plan'] != dof.solution_plan:
+        #     changed_fields.append('Çözüm Planı')
+        #     changes_details.append("Çözüm planı güncellendi")
         
         if old_values['dof_type'] != dof.dof_type:
             changed_fields.append('DÖF Türü')
@@ -2092,6 +2136,15 @@ def edit_dof(dof_id):
         if old_values['dof_source'] != dof.dof_source:
             changed_fields.append('DÖF Kaynağı')
             changes_details.append(f"DÖF Kaynağı değiştirildi")
+            
+        # Müşteri şikayeti alanları kontrolü
+        if old_values['channel'] != dof.channel:
+            changed_fields.append('Şikayet Kanalı')
+            changes_details.append(f"Şikayet Kanalı güncellendi")
+            
+        if old_values['complaint_date'] != dof.complaint_date:
+            changed_fields.append('Şikayet Tarihi')
+            changes_details.append(f"Şikayet Tarihi güncellendi")
             
         # Güncelleme tarihini ayarla
         dof.updated_at = datetime.now()
@@ -2558,9 +2611,28 @@ def resolve_dof(dof_id):
                 
             flash("DÖF kök neden analizi ve aksiyon planı kaydedildi. Kalite departmanı incelemesi bekleniyor.", "success")
             
+        elif dof.status == DOFStatus.PLANNING:
+            # PLANNING durumundan revize sonrası tekrar PLANNING'e geçiş
+            # Bu durumda DÖF zaten PLANNING durumunda olduğu için durum değişikliği yok ama bildirim gönder
+            status_change = False  # Durum aynı kalıyor
+            old_status = DOFStatus.PLANNING
+            
+            # Kök neden ve aksiyon planı revize edildikten sonra kalite departmanına tekrar bildirim gönder
+            quality_managers = User.query.filter_by(role=UserRole.QUALITY_MANAGER).all()
+            for manager in quality_managers:
+                notification = Notification(
+                    user_id=manager.id,
+                    dof_id=dof.id,
+                    message=f"DÖF #{dof.id} için kök neden analizi ve aksiyon planı revize edildi. Tekrar incelemeniz gerekiyor."
+                )
+                db.session.add(notification)
+                
+            flash("DÖF kök neden analizi ve aksiyon planı revize edildi. Kalite departmanı incelemesi bekleniyor.", "success")
+            
         elif dof.status == DOFStatus.IMPLEMENTATION:
             # Uygulama aşamasından Tamamlandı aşamasına geçiş
-            if 'complete' in request.form:
+            action_value = request.form.get('action', '')
+            if action_value == 'complete':
                 dof.status = DOFStatus.COMPLETED
                 status_change = True
                 old_status = DOFStatus.IMPLEMENTATION
@@ -2585,11 +2657,17 @@ def resolve_dof(dof_id):
         dof.updated_at = datetime.now()
         
         # Aksiyonu kaydet
+        # PLANNING durumunda revizyon için özel yorum oluştur
+        if dof.status == DOFStatus.PLANNING and old_status == DOFStatus.PLANNING:
+            comment_text = "Kök neden analizi ve aksiyon planı revize edildi. " + (form.comment.data or "")
+        else:
+            comment_text = form.comment.data
+            
         action = DOFAction(
             dof_id=dof.id,
             user_id=current_user.id,
-            action_type=2 if status_change else 1,  # 2: Durum Değişikliği, 1: Yorum
-            comment=form.comment.data,
+            action_type=2 if status_change else 1,  # 2: Durum Değişikliği, 1: Yorum/Güncelleme
+            comment=comment_text,
             old_status=old_status if status_change else None,
             new_status=dof.status if status_change else None,
             created_at=datetime.now()
@@ -2616,147 +2694,28 @@ def resolve_dof(dof_id):
         commit_duration = round((commit_time - start_time) * 1000)  # milisaniye cinsinden
         current_app.logger.info(f"DÖF çözüm planı veritabanı işlem süresi: {commit_duration}ms")
         
-        # Bildirim ve e-posta işlemleri için asenkron fonksiyon
-        def send_notifications_async():
-            try:
-                # Sistem içi bildirim oluştur
-                notify_for_dof(dof, "status_change", current_user)
-                
-                # Durum değişikliği bildirimlerini gönder
-                if status_change:
-                    # E-posta bilgilerini hazırla
-                    from models import User
-                    dof_id = dof.id
-                    dof_title = dof.title
-                    dept_id = dof.department_id
-                    created_by_id = dof.created_by
-                    assigned_to_id = dof.assigned_to
-                    user_name = current_user.full_name
-                    
-                    # Kalite yöneticilerini al
-                    quality_managers = User.query.filter_by(role=2).all()
-                    recipients = [qm.email for qm in quality_managers if qm and qm.email]
-                    
-                    # DÖF sahibi
-                    creator = User.query.get(created_by_id)
-                    if creator and creator.email and creator.id != current_user.id:
-                        recipients.append(creator.email)
-                    
-                    # Atanan kişi
-                    if assigned_to_id:
-                        assignee = User.query.get(assigned_to_id)
-                        if assignee and assignee.email and assignee.id != current_user.id:
-                            recipients.append(assignee.email)
-                    
-                    # Departman yöneticisi
-                    if dept_id:
-                        dept = Department.query.get(dept_id)
-                        if dept and dept.manager_id:
-                            dept_manager = User.query.get(dept.manager_id)
-                            if dept_manager and dept_manager.email and dept_manager.id != current_user.id:
-                                recipients.append(dept_manager.email)
-                    
-                    # Tekrarı önle
-                    recipients = list(set(recipients))
-                    
-                    # Durum adlarını al
-                    old_status_name = "Bilinmiyor"
-                    new_status_name = "Bilinmiyor"
-                    
-                    for status_enum, status_name in [
-                        (DOFStatus.DRAFT, "Taslak"),
-                        (DOFStatus.SUBMITTED, "Gönderildi"),
-                        (DOFStatus.IN_REVIEW, "İncelemede"),
-                        (DOFStatus.ASSIGNED, "Atandı"),
-                        (DOFStatus.IN_PROGRESS, "Devam Ediyor"),
-                        (DOFStatus.RESOLVED, "Çözüldü"),
-                        (DOFStatus.CLOSED, "Kapatıldı"),
-                        (DOFStatus.REJECTED, "Reddedildi")
-                    ]:
-                        if old_status == status_enum:
-                            old_status_name = status_name
-                        if dof.status == status_enum:
-                            new_status_name = status_name
-                    
-                    # DÖF URL'si oluştur - şu anda LOCAL ortam için
-                    try:
-                        # request zaten en üstte import edildi
-                        host = request.host_url
-                        if not host.endswith('/'):
-                            host += '/'
-                        
-                        # Local ortam için URL oluştur
-                        dof_url = f"{host}dof/{dof_id}"
-                        current_app.logger.info(f"Oluşturulan DÖF URL'si: {dof_url}")
-                    except Exception as e:
-                        current_app.logger.error(f"URL oluşturma hatası: {str(e)}")
-                        # Fallback - varsayılan localhost URL'si
-                        dof_url = f"http://localhost:5000/dof/{dof_id}"
-                    
-                    # E-posta içeriği - Modern tasarım
-                    subject = f"DÖF #{dof_id} - Durum Değişikliği: {old_status_name} → {new_status_name}"
-                    
-                    action_text = f"DÖF durumu <strong>{old_status_name}</strong> durumundan <strong>{new_status_name}</strong> durumuna değiştirildi."
-                    if form.solution_plan.data:
-                        action_text += f"<br><br><strong>Çözüm Planı:</strong> {form.solution_plan.data}"
-                    
-                    # Modern güzel e-posta şablonu
-                    html_content = f"""
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }}
-                            .header {{ background-color: #f8f8f8; padding: 10px; border-bottom: 1px solid #ddd; }}
-                            .footer {{ background-color: #f8f8f8; padding: 10px; border-top: 1px solid #ddd; margin-top: 20px; font-size: 12px; color: #777; }}
-                            .button {{ background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; }}
-                            .highlight {{ color: #007bff; font-weight: bold; }}
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h2>DÖF Durum Değişikliği Bildirimi</h2>
-                            </div>
-                            
-                            <p>Sayın Yetkili,</p>
-                            
-                            <p>{user_name} tarafından <span class="highlight">#{dof_id}</span> numaralı <strong>"{dof_title}"</strong> başlıklı DÖF için durum değişikliği yapıldı.</p>
-                            
-                            <p>{action_text}</p>
-                            
-                            <p>
-                                <a href="{dof_url}" class="button">DÖF Detaylarını Görüntüle</a>
-                            </p>
-                            
-                            <p>Tarih/Saat: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</p>
-                            
-                            <div class="footer">
-                                <p>Bu e-posta otomatik olarak gönderilmiştir, lütfen yanıtlamayınız.</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                    
-                    # Düz metin versiyon
-                    text_content = f"DÖF Durum Değişikliği\n\n{user_name} tarafından #{dof_id} numaralı \"{dof_title}\" başlıklı DÖF için durum değişikliği yapıldı.\n\nDÖF durumu {old_status_name} durumundan {new_status_name} durumuna değiştirildi.\n\nDÖF detaylarını görüntülemek için: {dof_url}\n\nBu e-posta otomatik olarak gönderilmiştir, lütfen yanıtlamayınız."
-                    
-                    # ASENKRON e-posta gönderimi
-                    for recipient in recipients:
-                        current_app.logger.info(f"DÖF DURUM DEĞİŞİKLİĞİ bildirim e-postası gönderiliyor: {recipient}")
-                        send_email_async(subject, [recipient], html_content, text_content)
-            except Exception as e:
-                current_app.logger.error(f"Asenkron bildirim hatası: {str(e)}")
-        
-        # Asenkron bildirimleri başlat
-        import threading
-        notification_thread = threading.Thread(target=send_notifications_async)
-        notification_thread.daemon = True
-        notification_thread.start()
-        
-        # Yorum bildirimi (else durumu asenkron işlev içinde ele alınıyor)
+        # Bildirim sistemi - direkt işlem (daha güvenli)
+        try:
+            # Merkezi bildirim sistemi kullan
+            from notification_system import notify_for_dof_event
+            
+            if status_change:
+                if dof.status == DOFStatus.PLANNING:
+                    # Kök neden ve aksiyon planı hazırlandı/revize edildi
+                    notify_for_dof_event(dof.id, "plan", current_user.id)
+                    current_app.logger.info(f"DÖF #{dof.id} plan bildirimi gönderildi")
+                elif dof.status == DOFStatus.COMPLETED:
+                    # Aksiyonlar tamamlandı
+                    notify_for_dof_event(dof.id, "complete", current_user.id)
+                    current_app.logger.info(f"DÖF #{dof.id} tamamlama bildirimi gönderildi")
+                else:
+                    # Genel durum değişikliği
+                    notify_for_dof_event(dof.id, "update", current_user.id)
+                    current_app.logger.info(f"DÖF #{dof.id} durum değişikliği bildirimi gönderildi")
+        except Exception as e:
+            current_app.logger.error(f"Bildirim gönderme hatası: {str(e)}")
+            import traceback
+            current_app.logger.error(traceback.format_exc())
         
         # Log kaydı oluştur
         action_text = "DÖF çözüm planı eklendi"
@@ -3783,7 +3742,7 @@ def reports():
         type_counter = Counter()
         for dof in filtered_dofs:
             if dof.dof_type is not None:
-                type_counter[str(dof.dof_type)] += 1
+                type_counter[int(dof.dof_type)] += 1
         type_counts = list(type_counter.items())
     
     # DÖF kaynağı dağılımı (filtrelenmiş veriye göre)
@@ -3792,7 +3751,7 @@ def reports():
         source_counter = Counter()
         for dof in filtered_dofs:
             if dof.dof_source is not None:
-                source_counter[str(dof.dof_source)] += 1
+                source_counter[int(dof.dof_source)] += 1
         source_counts = list(source_counter.items())
     
     # Aylık trend (son 6 ay) - filtrelenmiş veriye göre

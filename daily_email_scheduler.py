@@ -11,21 +11,14 @@ from datetime import datetime, timedelta
 import logging
 import atexit
 
-# Flask app ve modelleri import et
-from app import app, db
-from flask import url_for
-from models import (
-    DOF, User, Department, UserRole, DOFStatus, DOFAction, 
-    UserDepartmentMapping, DirectorManagerMapping
-)
-
 # Logger ayarları
 logger = logging.getLogger(__name__)
 
 def send_email_direct(to_email, subject, html_content, text_content):
     """Doğrudan SMTP ile e-posta gönder ve tracking'e kaydet"""
+    # Lazy import to avoid circular import
     from models import EmailTrack
-    from app import db
+    from extensions import db
     
     # E-posta tracking kaydı oluştur
     track_id = EmailTrack.create_track(subject, to_email)
@@ -106,6 +99,9 @@ def send_email_direct(to_email, subject, html_content, text_content):
 def get_user_managed_departments(user):
     """Kullanıcının yönettiği departmanları getir"""
     try:
+        # Lazy import to avoid circular import
+        from models import Department, UserRole, UserDepartmentMapping, DirectorManagerMapping
+        
         departments = []
         
         # Kalite Yöneticisi: TÜM departmanlar (genel rapor)
@@ -120,8 +116,8 @@ def get_user_managed_departments(user):
             if dept and dept.is_active:
                 departments.append(dept)
         
-        # Bölge Müdürü (Group Manager)
-        elif user.role == UserRole.GROUP_MANAGER:
+        # Çoklu Departman Yöneticileri (Group Manager, Projects Quality Tracking, Branches Quality Tracking)
+        elif user.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             user_dept_mappings = UserDepartmentMapping.query.filter_by(user_id=user.id).all()
             for mapping in user_dept_mappings:
                 if mapping.department and mapping.department.is_active:
@@ -132,11 +128,13 @@ def get_user_managed_departments(user):
             director_mappings = DirectorManagerMapping.query.filter_by(director_id=user.id).all()
             for mapping in director_mappings:
                 manager = mapping.manager
-                if manager and manager.role == UserRole.GROUP_MANAGER:
+                if manager and manager.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
                     manager_dept_mappings = UserDepartmentMapping.query.filter_by(user_id=manager.id).all()
                     for dept_mapping in manager_dept_mappings:
                         if dept_mapping.department and dept_mapping.department.is_active:
                             departments.append(dept_mapping.department)
+            
+            logger.info(f"✅ Direktör {user.full_name} - {len(departments)} departman eklendi")
         
         # Tekrar eden departmanları kaldır
         unique_departments = []
@@ -155,23 +153,32 @@ def get_user_managed_departments(user):
 def get_dof_statistics(department_ids):
     """Belirtilen departmanlar için DÖF istatistiklerini getir"""
     try:
+        # Lazy import to avoid circular import
+        from models import DOF, DOFStatus, DOFAction
+        from extensions import db
+        
         if not department_ids:
             return {}
         
         today = datetime.now()
         week_ago = today - timedelta(days=7)
         
+        # İlişkili DÖF'leri filtrele (başlığında "[İlişkili #" olan)
+        related_dof_filter = ~DOF.title.like("[İlişkili #%")
+        
         # Açık DÖF'ler
         open_dofs = DOF.query.filter(
             DOF.department_id.in_(department_ids),
-            DOF.status != DOFStatus.CLOSED
+            DOF.status != DOFStatus.CLOSED,
+            related_dof_filter
         ).all()
         
-        # Kapalı DÖF'ler (son 7 gün)
+        # Kapalı DÖF'ler (son 7 gün) - updated_at ile kontrol et
         closed_dofs = DOF.query.filter(
             DOF.department_id.in_(department_ids),
             DOF.status == DOFStatus.CLOSED,
-            DOF.closed_at >= week_ago
+            DOF.updated_at >= week_ago,
+            related_dof_filter
         ).all()
         
         # Durum dağılımı
@@ -180,28 +187,31 @@ def get_dof_statistics(department_ids):
             status_name = DOFStatus.get_label(dof.status)
             status_distribution[status_name] = status_distribution.get(status_name, 0) + 1
         
-        # Yaklaşan termin tarihleri (gelecek 7 gün)
+        # Yaklaşan termin tarihleri (gelecek 7 gün) - due_date kullan
         next_week = today + timedelta(days=7)
         upcoming_deadlines = DOF.query.filter(
             DOF.department_id.in_(department_ids),
             DOF.status != DOFStatus.CLOSED,
-            DOF.deadline.isnot(None),
-            DOF.deadline <= next_week,
-            DOF.deadline >= today
+            DOF.due_date.isnot(None),
+            DOF.due_date <= next_week,
+            DOF.due_date >= today,
+            related_dof_filter
         ).all()
         
-        # Geçmiş termin tarihleri
+        # Geçmiş termin tarihleri - due_date kullan
         overdue_dofs = DOF.query.filter(
             DOF.department_id.in_(department_ids),
             DOF.status != DOFStatus.CLOSED,
-            DOF.deadline.isnot(None),
-            DOF.deadline < today
+            DOF.due_date.isnot(None),
+            DOF.due_date < today,
+            related_dof_filter
         ).all()
         
         # Son aksiyonlar (son 7 gün)
         recent_actions = db.session.query(DOFAction).join(DOF).filter(
             DOF.department_id.in_(department_ids),
-            DOFAction.created_at >= week_ago
+            DOFAction.created_at >= week_ago,
+            related_dof_filter
         ).order_by(DOFAction.created_at.desc()).limit(10).all()
         
         return {
@@ -224,6 +234,10 @@ def get_dof_statistics(department_ids):
 def generate_report_html(user, departments, statistics):
     """HTML rapor oluştur"""
     try:
+        # Lazy import to avoid circular import
+        from app import app
+        from flask import url_for
+        
         # Diğer e-posta şablonlarıyla uyumlu olarak BASE_URL kullan
         server_url = app.config.get('BASE_URL', 'http://localhost:5000')
         # URL'in / ile bitmesini sağla
@@ -464,6 +478,10 @@ def scheduled_daily_report_job():
     try:
         logger.info("🚀 Scheduled günlük DÖF raporları başlıyor...")
         
+        # Lazy import to avoid circular import
+        from app import app
+        from models import User, UserRole
+        
         with app.app_context():
             # Server URL'ini tanımla
             server_url = app.config.get('BASE_URL', 'http://localhost:5000')
@@ -513,10 +531,16 @@ def scheduled_daily_report_job():
                         logger.warning(f"⚠️ {user.full_name} için istatistik alınamadı")
                         continue
                     
-                    # ÖNEMLI: Eğer hiç DÖF yoksa (hem açık hem kapalı) e-posta gönderme
-                    total_dofs = statistics.get('total_open', 0) + statistics.get('total_closed_week', 0)
-                    if total_dofs == 0:
-                        logger.info(f"⏭️ {user.full_name} - Hiç DÖF yok, e-posta gönderilmiyor")
+                    # ÖNEMLI: Sadece hiçbir aktif DÖF yoksa e-posta gönderme
+                    # Kapalı DÖF'ler de önemli (haftalık özet için)
+                    total_open = statistics.get('total_open', 0)
+                    total_closed_week = statistics.get('total_closed_week', 0)
+                    total_upcoming = statistics.get('total_upcoming', 0)
+                    total_overdue = statistics.get('total_overdue', 0)
+                    
+                    # Eğer hiçbir aktivite yoksa e-posta gönderme
+                    if total_open == 0 and total_closed_week == 0 and total_upcoming == 0 and total_overdue == 0:
+                        logger.info(f"⏭️ {user.full_name} - Hiçbir DÖF aktivitesi yok, e-posta gönderilmiyor")
                         filtered_recipients += 1
                         continue
                     
@@ -531,10 +555,10 @@ DÖF Günlük Raporu - {datetime.now().strftime('%d.%m.%Y')}
 Sayın {user.full_name},
 
 Sorumlu departmanlarınızdaki DÖF durumu:
-• Açık DÖF: {statistics.get('total_open', 0)}
-• Bu hafta kapatılan: {statistics.get('total_closed_week', 0)}
-• Yaklaşan termin: {statistics.get('total_upcoming', 0)}
-• Gecikmiş DÖF: {statistics.get('total_overdue', 0)}
+• Açık DÖF: {total_open}
+• Bu hafta kapatılan: {total_closed_week}
+• Yaklaşan termin: {total_upcoming}
+• Gecikmiş DÖF: {total_overdue}
 
 Detaylar için: {url_for('dof.dashboard', _external=True)}
 
@@ -601,18 +625,18 @@ def init_scheduler():
             max_instances=1
         )
         
-        # Test için - her dakika çalıştırmak isterseniz (geliştirme için)
-        # scheduler.add_job(
-        #     func=scheduled_daily_report_job,
-        #     trigger=CronTrigger(minute='*'),  # Her dakika
-        #     id='daily_dof_reports_test',
-        #     name='Test DÖF Raporları',
-        #     replace_existing=True,
-        #     max_instances=1
-        # )
+        # Test için - her 5 dakikada çalıştırmak (geliştirme için)
+        scheduler.add_job(
+            func=scheduled_daily_report_job,
+            trigger=CronTrigger(minute='*/5'),  # Her 5 dakika
+            id='daily_dof_reports_test',
+            name='Test DÖF Raporları (5dk)',
+            replace_existing=True,
+            max_instances=1
+        )
         
         scheduler.start()
-        logger.info("✅ E-posta zamanlayıcısı başlatıldı - Her gün 17:00'da çalışacak")
+        logger.info("✅ E-posta zamanlayıcısı başlatıldı - Her gün 17:00'da ve test için her 5 dakikada çalışacak")
         
         # Uygulama kapandığında scheduler'ı kapat
         atexit.register(lambda: scheduler.shutdown())

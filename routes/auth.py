@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, flash, redirect, url_for, request, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
-from app import db, app
+# app ve db lazy import olarak fonksiyonlarda kullanılacak
 from models import User, SystemLog, UserRole, Department, UserDepartmentMapping, DirectorManagerMapping
 from forms import LoginForm, RegisterForm, UserProfileForm, ChangePasswordForm, ForgotPasswordForm
 from utils import log_activity
@@ -10,6 +10,9 @@ import datetime
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
 auth_bp = Blueprint('auth', __name__)
+
+# app ve db'yi blueprint tanımından sonra import et
+from app import db, app
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -90,13 +93,12 @@ def register():
         # Role göre departman ilişkilerini ayarla
         if selected_role == UserRole.DEPARTMENT_MANAGER or selected_role == UserRole.FRANCHISE_DEPARTMENT_MANAGER:
             user.department_id = form.department.data if form.department.data != 0 else None
-        elif selected_role == UserRole.GROUP_MANAGER:
+        elif selected_role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
             user.department_id = None  # Grup yöneticisi doğrudan bir departmana bağlı değil
         elif selected_role == UserRole.DIRECTOR:
             user.department_id = None  # Direktör de doğrudan bir departmana bağlı değil
         else:
-            # Admin ve Kalite Yöneticisi için departman ilişkisi gerekmez
-            user.department_id = None
+            user.department_id = form.department.data if form.department.data != 0 else None
             
         user.set_password(form.password.data)
         
@@ -108,9 +110,9 @@ def register():
         
         # Bölge Müdürü veya Direktör ise çoklu ilişkileri ekle
         try:
-            # Bölge Müdürü için çoklu departman ilişkisi ekle
-            if selected_role == UserRole.GROUP_MANAGER and form.managed_departments.data:
-                current_app.logger.info(f"Bölge Müdürü için departman ataması: {form.managed_departments.data}")
+            # Çoklu departman yöneticisi için çoklu departman ilişkisi ekle
+            if selected_role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING] and form.managed_departments.data:
+                current_app.logger.info(f"Çoklu departman yöneticisi için departman ataması: {form.managed_departments.data}")
                 for dept_id in form.managed_departments.data:
                     # Departman ID'nin integer olduğundan emin ol
                     dept_id = int(dept_id) if not isinstance(dept_id, int) else dept_id
@@ -149,9 +151,9 @@ def register():
                         # ID'nin integer olduğundan emin ol
                         manager_id = int(manager_id) if not isinstance(manager_id, int) else manager_id
                         
-                        # Bölge müdürünün varlığını kontrol et
+                        # Çoklu departman yöneticisinin varlığını kontrol et
                         manager = User.query.get(manager_id)
-                        if manager and manager.role == UserRole.GROUP_MANAGER:
+                        if manager and manager.role in [UserRole.GROUP_MANAGER, UserRole.PROJECTS_QUALITY_TRACKING, UserRole.BRANCHES_QUALITY_TRACKING]:
                             # DirectorManagerMapping tablosuna kayıt ekle
                             mapping = DirectorManagerMapping(
                                 director_id=user.id, 

@@ -47,7 +47,7 @@
                                 <span class="badge bg-danger">Yönetici</span>
                             {% elif user.role == 2 %}
                                 <span class="badge bg-primary">Kalite Yöneticisi</span>
-                            {% elif user.role == 3 %}
+                            {% elif user.role == 3 or user.role == 8 or user.role == 9 %}
                                 <span class="badge bg-success">Bölge Müdürü</span>
                             {% elif user.role == 4 %}
                                 <span class="badge bg-info">Departman Yöneticisi</span>
@@ -55,6 +55,12 @@
                                 <span class="badge bg-secondary">Kullanıcı</span>
                             {% elif user.role == 6 %}
                                 <span class="badge bg-warning text-dark">Direktör</span>
+                            {% elif user.role == 7 %}
+                                <span class="badge bg-info">Franchise Departman Yöneticisi</span>
+                            {% elif user.role == 8 %}
+                                <span class="badge bg-success">Projeler Kalite Takip</span>
+                            {% elif user.role == 9 %}
+                                <span class="badge bg-success">Şubeler Kalite Takip</span>
                             {% else %}
                                 <span class="badge bg-secondary">Tanımlanmamış Rol</span>
                             {% endif %}
