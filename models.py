@@ -436,6 +436,22 @@ class DOF(db.Model):
                 return True
         return False
         
+    def can_be_deleted_by(self, user):
+        """DÖF'ü belirli kullanıcının silme yetkisi var mı?"""
+        # Admin her DÖF'ü silebilir
+        if user.role == UserRole.ADMIN:
+            return True
+            
+        # Kalite Yöneticisi her DÖF'ü silebilir
+        if user.role == UserRole.QUALITY_MANAGER:
+            return True
+            
+        # Taslak aşamasında ve oluşturan kişi ise silebilir
+        if self.status == DOFStatus.DRAFT and self.created_by == user.id:
+            return True
+            
+        return False
+        
     def __repr__(self):
         return f'<DOF {self.id}: {self.title}>'
 

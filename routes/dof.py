@@ -4074,3 +4074,66 @@ def can_view_dof(dof, user):
             return True
     
     return False
+
+
+@dof_bp.route('/dof/<int:dof_id>/delete', methods=['POST'])
+@login_required
+def delete_dof(dof_id):
+    """DÖF silme işlemi"""
+    from app import db
+    
+    dof = DOF.query.get_or_404(dof_id)
+    
+    # Silme yetkisi kontrolü
+    if not dof.can_be_deleted_by(current_user):
+        flash('Bu DÖF\'ü silme yetkiniz yok.', 'error')
+        return redirect(url_for('dof.view_dof', dof_id=dof_id))
+    
+    try:
+        # DÖF'ün bilgilerini log için sakla
+        dof_title = dof.title
+        dof_code = dof.code or f"DÖF #{dof.id}"
+        
+        # İlişkili verileri sil
+        # DÖF aksiyonlarını sil
+        DOFAction.query.filter_by(dof_id=dof_id).delete()
+        
+        # DÖF eklerini sil
+        attachments = Attachment.query.filter_by(dof_id=dof_id).all()
+        for attachment in attachments:
+            # Dosyayı diskten sil
+            if attachment.file_path and os.path.exists(attachment.file_path):
+                try:
+                    os.remove(attachment.file_path)
+                except OSError:
+                    pass  # Dosya silinmese de devam et
+            db.session.delete(attachment)
+        
+        # Bildirimleri sil
+        Notification.query.filter_by(dof_id=dof_id).delete()
+        
+        # Aktivite loglarını sil
+        UserActivity.query.filter_by(dof_id=dof_id).delete()
+        
+        # DÖF'ü sil
+        db.session.delete(dof)
+        db.session.commit()
+        
+        # Aktivite logu ekle
+        log_activity(
+            user_id=current_user.id,
+            action='DÖF_SILINDI',
+            description=f'{dof_code} - {dof_title} DÖF\'ü silindi.',
+            dof_id=None  # DÖF silindiği için None
+        )
+        
+        flash(f'{dof_code} başarıyla silindi.', 'success')
+        current_app.logger.info(f"DÖF silindi: {dof_code} - Silen: {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash('DÖF silinirken bir hata oluştu.', 'error')
+        current_app.logger.error(f"DÖF silme hatası: {str(e)}")
+        return redirect(url_for('dof.view_dof', dof_id=dof_id))
+    
+    return redirect(url_for('dof.list_dofs'))
