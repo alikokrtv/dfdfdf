@@ -13,7 +13,9 @@
             {% for dof in dofs.items %}
             <tr>
                 <td>{{ dof.id }}</td>
-                <td>{{ dof.title }}</td>
+                <td>
+                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="text-decoration-none">{{ dof.title }}</a>
+                </td>
                 <td>
                     {% if dof.department %}
                         {{ dof.department.name }}
@@ -51,9 +53,19 @@
                     {% endif %}
                 </td>
                 <td>
-                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('dof.detail', dof_id=dof.id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Görüntüle">
                         <i class="fas fa-eye"></i>
                     </a>
+                    {% if current_user.id == dof.created_by or current_user.role in [1, 2, 0] %}
+                    <a href="{{ url_for('dof.edit_dof', dof_id=dof.id) }}" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Düzenle">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    {% endif %}
+                    {% if dof.can_be_deleted_by(current_user) %}
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Sil" onclick="confirmDelete({{ dof.id }}, '{{ dof.code or ('DÖF #' + dof.id|string) }}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -64,8 +76,6 @@
         {% endif %}
     </tbody>
 </table>
-
-<!-- Sayfalama için JavaScript kaldırıldı -->
 
 {% if dofs.items and dofs.pages > 1 %}
 <nav aria-label="DÖF Listesi Sayfaları" class="d-flex justify-content-center mt-3">
@@ -79,7 +89,6 @@
             <a class="page-link" href="#">Önceki</a>
         </li>
         {% endif %}
-        
         {% for page_num in dofs.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1) %}
             {% if page_num %}
                 {% if page_num == dofs.page %}
@@ -97,7 +106,6 @@
                 </li>
             {% endif %}
         {% endfor %}
-        
         {% if dofs.has_next %}
         <li class="page-item">
             <a class="page-link" href="{{ url_for('dof.list_dofs', page=dofs.next_num, ajax=request.args.get('ajax', 0), department=request.args.get('department', 0), created_dept=request.args.get('created_dept', 0), status=request.args.get('status', 0)) }}">Sonraki</a>

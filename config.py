@@ -43,7 +43,8 @@ class Config:
         SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     else:
         # Yerel geliştirme ortamı için varsayılan bağlantı
-        SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:255223Rtv@localhost/dof_db'
+        LOCAL_DB_NAME = os.environ.get('DB_NAME', 'dof_db')
+        SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://root:255223Rtv@localhost/{LOCAL_DB_NAME}"
     
     # SQLite bağlantısı (yorum satırında)
     # # SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///dof.db')

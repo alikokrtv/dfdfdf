@@ -13,6 +13,7 @@ from utils import allowed_file, save_file, log_activity, notify_for_dof, get_dof
 from generate_dof_code import generate_dof_code
 import os
 import time
+from extensions import db
 
 # Güzel DÖF e-posta bildirimi fonksiyonu
 def send_beautiful_dof_email(dof, dof_id, dof_title, dof_description, creator_name):
@@ -179,9 +180,6 @@ def send_direct_notifications_to_quality_managers(dof_id, creator_name, dof_titl
         return False
 
 dof_bp = Blueprint('dof', __name__)
-
-# app ve db'yi blueprint tanımından sonra import et
-from app import db
 
 @dof_bp.route('/dof/<int:dof_id>/review', methods=['GET', 'POST'])
 @login_required
@@ -4087,7 +4085,7 @@ def delete_dof(dof_id):
     # Silme yetkisi kontrolü
     if not dof.can_be_deleted_by(current_user):
         flash('Bu DÖF\'ü silme yetkiniz yok.', 'error')
-        return redirect(url_for('dof.view_dof', dof_id=dof_id))
+        return redirect(url_for('dof.detail', dof_id=dof_id))
     
     try:
         # DÖF'ün bilgilerini log için sakla
@@ -4134,6 +4132,6 @@ def delete_dof(dof_id):
         db.session.rollback()
         flash('DÖF silinirken bir hata oluştu.', 'error')
         current_app.logger.error(f"DÖF silme hatası: {str(e)}")
-        return redirect(url_for('dof.view_dof', dof_id=dof_id))
+        return redirect(url_for('dof.detail', dof_id=dof_id))
     
     return redirect(url_for('dof.list_dofs'))

@@ -5,15 +5,19 @@ from werkzeug.security import check_password_hash
 from models import User, SystemLog, UserRole, Department, UserDepartmentMapping, DirectorManagerMapping
 from forms import LoginForm, RegisterForm, UserProfileForm, ChangePasswordForm, ForgotPasswordForm
 from utils import log_activity
-from notification_system import send_email_to_user
 import datetime
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
+# Defer app/db imports to avoid circular
+from extensions import db
+
 auth_bp = Blueprint('auth', __name__)
 
-# app ve db'yi blueprint tanımından sonra import et
-from app import db, app
-s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+def _get_serializer():
+    # Uygulama bağlamı içinde güvenli bir şekilde serializer oluştur
+    from flask import current_app
+    secret = current_app.config.get('SECRET_KEY')
+    return URLSafeTimedSerializer(secret)
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -347,6 +351,7 @@ def forgot_password():
         user = User.query.filter_by(email=form.email.data).first()
         if user:
             try:
+                s = _get_serializer()
                 token = s.dumps(user.email, salt='sifre-sifirlama-salt')
                 reset_url = url_for('auth.reset_password', token=token, _external=True)
                 
@@ -467,6 +472,7 @@ def reset_password(token):
         return redirect(url_for('dof.dashboard'))
         
     try:
+        s = _get_serializer()
         email = s.loads(token, salt='sifre-sifirlama-salt', max_age=3600)  # 1 saat geçerli
     except (SignatureExpired, BadTimeSignature):
         flash('Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş.', 'danger')

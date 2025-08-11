@@ -2,11 +2,9 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required, current_user
 from models import Notification, User, DOF, DOFStatus, Department
 from sqlalchemy import func
+from extensions import db
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
-
-# db'yi blueprint tanımından sonra import et
-from app import db
 
 @api_bp.route('/notifications')
 @login_required

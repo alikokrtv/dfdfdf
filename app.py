@@ -53,6 +53,27 @@ def get_status_name(status_code):
 
 # Uygulama yapılandırmasını yükle
 from config import Config
+
+# Fallback: try alternate password if local default fails
+if not os.environ.get('DATABASE_URL') and 'mysql+pymysql://' in Config.SQLALCHEMY_DATABASE_URI:
+    # Try connecting with configured URI; if fails, try fallback password
+    from sqlalchemy import create_engine, text
+    test_uri = Config.SQLALCHEMY_DATABASE_URI
+    fallback_uri = test_uri.replace('255223Rtv', '255223') if '255223Rtv' in test_uri else test_uri.replace('255223', '255223Rtv')
+    try:
+        eng = create_engine(test_uri)
+        with eng.connect() as c:
+            c.execute(text('SELECT 1'))
+    except Exception:
+        try:
+            eng = create_engine(fallback_uri)
+            with eng.connect() as c:
+                c.execute(text('SELECT 1'))
+            # If fallback worked, override app config before init_app
+            Config.SQLALCHEMY_DATABASE_URI = fallback_uri
+        except Exception:
+            pass
+
 app.config.from_object(Config)
 
 # Eklentileri başlat

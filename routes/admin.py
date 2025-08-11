@@ -7,11 +7,9 @@ from utils import log_activity, get_department_stats
 from datetime import datetime, timedelta
 from sqlalchemy import func, desc
 import os
+from extensions import db, mail
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
-
-# app, db, mail'i blueprint tanımından sonra import et
-from app import db, mail
 
 # Admin yetkisi gerektiren işlemler için decorator
 def admin_required(f):

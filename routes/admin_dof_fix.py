@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, flash, redirect, url_for, request, abort, current_app
 from flask_login import login_required, current_user
-from app import db, mail
+from extensions import db, mail
 from models import User, Department, SystemLog, DOF, DOFAction, WorkflowDefinition, WorkflowStep, UserRole, DOFStatus, UserDepartmentMapping, DirectorManagerMapping
 from forms import RegisterForm, DepartmentForm, WorkflowDefinitionForm, WorkflowStepForm, EmailSettingsForm
 from utils import log_activity, get_department_stats

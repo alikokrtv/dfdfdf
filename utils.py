@@ -5,7 +5,7 @@ import threading
 from flask import current_app, render_template
 from werkzeug.utils import secure_filename
 from flask_mail import Message
-from app import mail, db
+from extensions import db, mail
 from models import SystemLog, Notification, User, DOFStatus, UserActivity
 
 def save_file(file, upload_folder=None):
@@ -165,7 +165,6 @@ def send_email(subject, recipients, body_html, body_text=None, max_retries=1, tr
         bool: Gönderim başarılı ise True, değilse False
     """
     from flask import current_app
-    from app import mail
     from flask_mail import Message
     import smtplib
     import time
