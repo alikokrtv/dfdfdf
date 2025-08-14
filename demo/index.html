@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DÖF Yönetim Sistemi - Demo</title>
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        
+        .demo-badge {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .demo-info-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .demo-users-table {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .quick-login-btn {
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 15px;
+        }
+        
+        .demo-features {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .feature-item:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Demo Badge -->
+    <div class="demo-badge">
+        <i class="fas fa-flask me-1"></i>DEMO ORTAMI
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sol Kolon - Demo Bilgileri -->
+            <div class="col-lg-4 p-4">
+                <div class="demo-info-card">
+                    <h3><i class="fas fa-clipboard-check me-2"></i>DÖF Yönetim Sistemi</h3>
+                    <p class="mb-0">Düzeltici ve Önleyici Faaliyet Yönetim Platformu</p>
+                    <small><i class="fas fa-info-circle me-1"></i>Tam işlevsel demo - 24 saat aktif</small>
+                </div>
+
+                <!-- Demo Kullanıcıları -->
+                <div class="demo-users-table">
+                    <h5><i class="fas fa-users me-2"></i>Demo Kullanıcıları</h5>
+                    <p class="text-muted small">Farklı roller ile sistemi test edin:</p>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rol</th>
+                                    <th>Kullanıcı</th>
+                                    <th>Şifre</th>
+                                    <th>Giriş</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-danger">Admin</span></td>
+                                    <td><code>demo_admin</code></td>
+                                    <td><code>demo123</code></td>
+                                    <td><button class="btn btn-primary quick-login-btn" onclick="quickLogin('demo_admin', 'demo123')">Giriş</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-warning">Kalite Mgr</span></td>
+                                    <td><code>kalite_mgr</code></td>
+                                    <td><code>demo123</code></td>
+                                    <td><button class="btn btn-primary quick-login-btn" onclick="quickLogin('kalite_mgr', 'demo123')">Giriş</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-info">Dept Mgr</span></td>
+                                    <td><code>dept_mgr</code></td>
+                                    <td><code>demo123</code></td>
+                                    <td><button class="btn btn-primary quick-login-btn" onclick="quickLogin('dept_mgr', 'demo123')">Giriş</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">Kullanıcı</span></td>
+                                    <td><code>kullanici</code></td>
+                                    <td><code>demo123</code></td>
+                                    <td><button class="btn btn-primary quick-login-btn" onclick="quickLogin('kullanici', 'demo123')">Giriş</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Demo Özellikleri -->
+                <div class="demo-features">
+                    <h5><i class="fas fa-star me-2"></i>Demo Özellikleri</h5>
+                    
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div>
+                            <strong>DÖF Oluşturma</strong><br>
+                            <small class="text-muted">Yeni düzeltici faaliyetler ekleyin</small>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-edit"></i>
+                        </div>
+                        <div>
+                            <strong>DÖF Düzenleme</strong><br>
+                            <small class="text-muted">Mevcut kayıtları güncelleyin</small>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-trash"></i>
+                        </div>
+                        <div>
+                            <strong>DÖF Silme</strong><br>
+                            <small class="text-muted">Gereksiz kayıtları kaldırın</small>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div>
+                            <strong>Kullanıcı Yönetimi</strong><br>
+                            <small class="text-muted">Departman ve rol yönetimi</small>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div>
+                            <strong>Raporlama</strong><br>
+                            <small class="text-muted">Detaylı analiz ve istatistikler</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sağ Kolon - Login Formu -->
+            <div class="col-lg-8">
+                <div class="login-container">
+                    <div class="col-md-6 col-lg-5">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body p-4">
+                                <div class="text-center mb-4">
+                                    <i class="fas fa-clipboard-check fa-3x text-primary mb-3"></i>
+                                    <h3 class="fw-bold">DÖF Yönetim Sistemi</h3>
+                                    <p class="text-muted">Düzeltici Önleyici Faaliyet Sistemi</p>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Demo Modu:</strong> Sol taraftaki hızlı giriş butonlarını kullanabilir veya manuel giriş yapabilirsiniz.
+                                    </div>
+                                </div>
+                                
+                                <form id="loginForm" class="needs-validation" novalidate>
+                                    <div class="mb-3">
+                                        <label for="username" class="form-label">Kullanıcı Adı</label>
+                                        <input type="text" class="form-control" id="username" name="username" placeholder="Kullanıcı adınızı girin" required>
+                                        <div class="invalid-feedback">
+                                            Lütfen kullanıcı adınızı giriniz
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="password" class="form-label">Şifre</label>
+                                        <input type="password" class="form-control" id="password" name="password" placeholder="Şifrenizi girin" required>
+                                        <div class="invalid-feedback">
+                                            Lütfen şifrenizi giriniz
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="remember">
+                                        <label class="form-check-label" for="remember">
+                                            Beni Hatırla
+                                        </label>
+                                    </div>
+
+                                    <div class="d-grid mb-3">
+                                        <button type="submit" class="btn btn-primary" id="loginBtn">
+                                            <i class="fas fa-sign-in-alt me-2"></i>Demo'ya Giriş Yap
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="text-center">
+                                        <small class="text-muted">Demo ortamında şifre sıfırlama mevcut değildir</small>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="text-center mt-3 text-muted">
+                            <small>&copy; 2024 DÖF Yönetim Sistemi - Demo Sürümü</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Demo kullanıcı bilgileri
+        const demoUsers = {
+            'demo_admin': { password: 'demo123', role: 'Admin', redirect: 'admin-dashboard.html' },
+            'kalite_mgr': { password: 'demo123', role: 'Kalite Yöneticisi', redirect: 'quality-dashboard.html' },
+            'dept_mgr': { password: 'demo123', role: 'Departman Yöneticisi', redirect: 'dept-dashboard.html' },
+            'kullanici': { password: 'demo123', role: 'Kullanıcı', redirect: 'user-dashboard.html' }
+        };
+
+        // Hızlı giriş fonksiyonu
+        function quickLogin(username, password) {
+            document.getElementById('username').value = username;
+            document.getElementById('password').value = password;
+            
+            // Form submit
+            setTimeout(() => {
+                handleLogin(username, password);
+            }, 500);
+        }
+
+        // Login form submit handler
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            handleLogin(username, password);
+        });
+
+        // Login işlemi
+        function handleLogin(username, password) {
+            const loginBtn = document.getElementById('loginBtn');
+            
+            // Loading state
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Giriş yapılıyor...';
+            loginBtn.disabled = true;
+            
+            setTimeout(() => {
+                if (demoUsers[username] && demoUsers[username].password === password) {
+                    // Başarılı giriş
+                    localStorage.setItem('demoUser', JSON.stringify({
+                        username: username,
+                        role: demoUsers[username].role,
+                        loginTime: new Date().toISOString()
+                    }));
+                    
+                    // Başarı mesajı
+                    loginBtn.innerHTML = '<i class="fas fa-check me-2"></i>Giriş başarılı!';
+                    loginBtn.classList.remove('btn-primary');
+                    loginBtn.classList.add('btn-success');
+                    
+                    // Dashboard'a yönlendir
+                    setTimeout(() => {
+                        window.location.href = demoUsers[username].redirect;
+                    }, 1000);
+                } else {
+                    // Hatalı giriş
+                    loginBtn.innerHTML = '<i class="fas fa-times me-2"></i>Hatalı giriş!';
+                    loginBtn.classList.remove('btn-primary');
+                    loginBtn.classList.add('btn-danger');
+                    
+                    // Form sıfırla
+                    setTimeout(() => {
+                        loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Demo\'ya Giriş Yap';
+                        loginBtn.classList.remove('btn-danger');
+                        loginBtn.classList.add('btn-primary');
+                        loginBtn.disabled = false;
+                        
+                        // Hata mesajı göster
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+                        alertDiv.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Hatalı giriş!</strong> Lütfen demo kullanıcı bilgilerini kullanın.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        document.querySelector('.card-body').appendChild(alertDiv);
+                        
+                        // 5 saniye sonra hata mesajını kaldır
+                        setTimeout(() => {
+                            if (alertDiv.parentNode) {
+                                alertDiv.remove();
+                            }
+                        }, 5000);
+                    }, 1500);
+                }
+            }, 1500);
+        }
+
+        // Form validation
+        (function() {
+            'use strict';
+            window.addEventListener('load', function() {
+                var forms = document.getElementsByClassName('needs-validation');
+                var validation = Array.prototype.filter.call(forms, function(form) {
+                    form.addEventListener('submit', function(event) {
+                        if (form.checkValidity() === false) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        form.classList.add('was-validated');
+                    }, false);
+                });
+            }, false);
+        })();
+    </script>
+</body>
+</html>

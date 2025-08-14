@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalite Yöneticisi Dashboard - DÖF Yönetim Sistemi Demo</title>
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        .demo-badge {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: linear-gradient(45deg, #ffc107, #fd7e14);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .sidebar {
+            background: #343a40;
+            min-height: calc(100vh - 56px);
+        }
+        
+        .sidebar .nav-link {
+            color: #adb5bd;
+            padding: 10px 20px;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: white;
+            background: #ffc107;
+        }
+        
+        .main-content {
+            background: #f8f9fa;
+            min-height: calc(100vh - 56px);
+        }
+        
+        .approval-card {
+            border-left: 4px solid #ffc107;
+            background: #fff9e6;
+        }
+        
+        .pending-review {
+            border-left: 4px solid #dc3545;
+            background: #ffeaea;
+        }
+    </style>
+</head>
+<body>
+    <!-- Demo Badge -->
+    <div class="demo-badge">
+        <i class="fas fa-flask me-1"></i>DEMO - KALİTE YÖNETİCİSİ
+    </div>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-warning">
+        <div class="container-fluid">
+            <a class="navbar-brand text-dark" href="#">
+                <i class="fas fa-clipboard-check me-2"></i>DÖF Yönetim Sistemi
+                <span class="badge bg-dark ms-2">DEMO</span>
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-tie me-1"></i>Kalite Yöneticisi
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Profil</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Ayarlar</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="index.html"><i class="fas fa-sign-out-alt me-2"></i>Çıkış</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 px-0 sidebar">
+                <nav class="nav flex-column">
+                    <a class="nav-link active" href="#dashboard">
+                        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                    </a>
+                    <a class="nav-link" href="#review">
+                        <i class="fas fa-search me-2"></i>DÖF İnceleme
+                    </a>
+                    <a class="nav-link" href="#approvals">
+                        <i class="fas fa-check-circle me-2"></i>Onaylar
+                    </a>
+                    <a class="nav-link" href="#reports">
+                        <i class="fas fa-chart-line me-2"></i>Kalite Raporları
+                    </a>
+                    <a class="nav-link" href="#audit">
+                        <i class="fas fa-clipboard-check me-2"></i>Denetim
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 main-content p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="fas fa-user-tie me-2"></i>Kalite Yöneticisi Dashboard</h2>
+                    <div>
+                        <button class="btn btn-warning me-2" onclick="showBulkApproval()">
+                            <i class="fas fa-check-double me-2"></i>Toplu Onay
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="generateQualityReport()">
+                            <i class="fas fa-file-alt me-2"></i>Kalite Raporu
+                        </button>
+                    </div>
+                </div>
+
+                <!-- İstatistik Kartları -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon bg-warning">
+                                    <i class="fas fa-hourglass-half"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h3 class="mb-0">5</h3>
+                                    <p class="text-muted mb-0">Onay Bekleyen</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon bg-success">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h3 class="mb-0">18</h3>
+                                    <p class="text-muted mb-0">Bu Ay Onaylanan</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon bg-danger">
+                                    <i class="fas fa-times-circle"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h3 class="mb-0">3</h3>
+                                    <p class="text-muted mb-0">Reddedilen</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon bg-info">
+                                    <i class="fas fa-percentage"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h3 class="mb-0">85%</h3>
+                                    <p class="text-muted mb-0">Onay Oranı</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onay Bekleyen DÖF'ler -->
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-hourglass-half me-2"></i>Onay Bekleyen DÖF'ler</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="pendingDOFs">
+                                    <!-- Demo veriler JavaScript ile yüklenecek -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-4">
+                        <!-- Hızlı İşlemler -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6><i class="fas fa-bolt me-2"></i>Hızlı İşlemler</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-success btn-sm" onclick="approveAll()">
+                                        <i class="fas fa-check-double me-2"></i>Tümünü Onayla
+                                    </button>
+                                    <button class="btn btn-outline-info btn-sm" onclick="showQualityMetrics()">
+                                        <i class="fas fa-chart-bar me-2"></i>Kalite Metrikleri
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-sm" onclick="scheduleAudit()">
+                                        <i class="fas fa-calendar-alt me-2"></i>Denetim Planla
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Son Aktiviteler -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h6><i class="fas fa-history me-2"></i>Son Aktiviteler</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="timeline" id="recentActivities">
+                                    <!-- Demo aktiviteler JavaScript ile yüklenecek -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DÖF Onay Modal -->
+    <div class="modal fade" id="approvalModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>DÖF Onaylama</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="approvalContent">
+                        <!-- İçerik JavaScript ile doldurulacak -->
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Onay Notu</label>
+                        <textarea class="form-control" id="approvalNote" rows="3" placeholder="Onay notunuzu yazın..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="button" class="btn btn-danger me-2" onclick="rejectDOF()">
+                        <i class="fas fa-times me-2"></i>Reddet
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="approveDOF()">
+                        <i class="fas fa-check me-2"></i>Onayla
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Demo DÖF verileri - onay bekleyen
+        let pendingDOFs = [
+            {
+                id: 'DOF-004',
+                title: 'Tedarikçi Kalite Problemi',
+                department: 'Satın Alma',
+                creator: 'Fatma Özkan',
+                date: '2024-01-16',
+                priority: 'Yüksek',
+                description: 'Tedarikçiden gelen malzemelerde kalite standartlarına uygunluk sorunu tespit edildi.'
+            },
+            {
+                id: 'DOF-005',
+                title: 'İş Güvenliği İhlali',
+                department: 'Üretim',
+                creator: 'Ali Vural',
+                date: '2024-01-15',
+                priority: 'Kritik',
+                description: 'Üretim hattında güvenlik prosedürlerine uyulmadığı gözlemlendi.'
+            },
+            {
+                id: 'DOF-006',
+                title: 'Müşteri Geri Bildirimi',
+                department: 'Müşteri Hizmetleri',
+                creator: 'Zeynep Kara',
+                date: '2024-01-14',
+                priority: 'Orta',
+                description: 'Müşteri memnuniyetsizliği ve iyileştirme önerileri.'
+            }
+        ];
+
+        let currentDOFForApproval = null;
+
+        // Sayfa yüklendiğinde
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPendingDOFs();
+            loadRecentActivities();
+        });
+
+        // Onay bekleyen DÖF'leri yükle
+        function loadPendingDOFs() {
+            const container = document.getElementById('pendingDOFs');
+            container.innerHTML = '';
+
+            if (pendingDOFs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted"><i class="fas fa-check-circle fa-3x mb-3"></i><br>Onay bekleyen DÖF bulunmuyor.</div>';
+                return;
+            }
+
+            pendingDOFs.forEach(dof => {
+                const priorityClass = {
+                    'Kritik': 'danger',
+                    'Yüksek': 'warning',
+                    'Orta': 'info',
+                    'Düşük': 'secondary'
+                };
+
+                const dofCard = `
+                    <div class="card mb-3 pending-review">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">${dof.id} - ${dof.title}</h6>
+                                    <p class="card-text text-muted">${dof.description}</p>
+                                    <small class="text-muted">
+                                        <i class="fas fa-building me-1"></i>${dof.department} | 
+                                        <i class="fas fa-user me-1"></i>${dof.creator} | 
+                                        <i class="fas fa-calendar me-1"></i>${new Date(dof.date).toLocaleDateString('tr-TR')}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-${priorityClass[dof.priority]} mb-2">${dof.priority}</span><br>
+                                    <button class="btn btn-sm btn-success me-1" onclick="showApprovalModal('${dof.id}')">
+                                        <i class="fas fa-check"></i> Onayla
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="showRejectionModal('${dof.id}')">
+                                        <i class="fas fa-times"></i> Reddet
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += dofCard;
+            });
+        }
+
+        // Son aktiviteleri yükle
+        function loadRecentActivities() {
+            const activities = [
+                { action: 'DÖF-003 onaylandı', time: '2 saat önce', icon: 'check', color: 'success' },
+                { action: 'DÖF-002 incelemeye alındı', time: '4 saat önce', icon: 'eye', color: 'info' },
+                { action: 'Kalite raporu oluşturuldu', time: '1 gün önce', icon: 'file-alt', color: 'primary' },
+                { action: 'DÖF-001 reddedildi', time: '2 gün önce', icon: 'times', color: 'danger' }
+            ];
+
+            const container = document.getElementById('recentActivities');
+            container.innerHTML = '';
+
+            activities.forEach(activity => {
+                const activityItem = `
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0">
+                            <div class="bg-${activity.color} text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 30px; height: 30px;">
+                                <i class="fas fa-${activity.icon} fa-sm"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <p class="mb-0 small">${activity.action}</p>
+                            <small class="text-muted">${activity.time}</small>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += activityItem;
+            });
+        }
+
+        // Onay modalını göster
+        function showApprovalModal(dofId) {
+            const dof = pendingDOFs.find(d => d.id === dofId);
+            if (!dof) return;
+
+            currentDOFForApproval = dof;
+            
+            document.getElementById('approvalContent').innerHTML = `
+                <div class="alert alert-info">
+                    <h6>${dof.id} - ${dof.title}</h6>
+                    <p class="mb-0">${dof.description}</p>
+                    <hr>
+                    <small><strong>Departman:</strong> ${dof.department} | <strong>Oluşturan:</strong> ${dof.creator}</small>
+                </div>
+            `;
+
+            const modal = new bootstrap.Modal(document.getElementById('approvalModal'));
+            modal.show();
+        }
+
+        // DÖF onayla
+        function approveDOF() {
+            if (!currentDOFForApproval) return;
+
+            const note = document.getElementById('approvalNote').value;
+            
+            // DÖF'ü onaylanmış listesine taşı
+            pendingDOFs = pendingDOFs.filter(d => d.id !== currentDOFForApproval.id);
+            loadPendingDOFs();
+
+            // Modal'ı kapat
+            const modal = bootstrap.Modal.getInstance(document.getElementById('approvalModal'));
+            modal.hide();
+            document.getElementById('approvalNote').value = '';
+
+            showAlert('success', `${currentDOFForApproval.id} başarıyla onaylandı!`);
+            currentDOFForApproval = null;
+        }
+
+        // DÖF reddet
+        function rejectDOF() {
+            if (!currentDOFForApproval) return;
+
+            const note = document.getElementById('approvalNote').value;
+            if (!note.trim()) {
+                alert('Red nedeni belirtilmelidir!');
+                return;
+            }
+
+            // DÖF'ü reddedilmiş olarak işaretle
+            pendingDOFs = pendingDOFs.filter(d => d.id !== currentDOFForApproval.id);
+            loadPendingDOFs();
+
+            // Modal'ı kapat
+            const modal = bootstrap.Modal.getInstance(document.getElementById('approvalModal'));
+            modal.hide();
+            document.getElementById('approvalNote').value = '';
+
+            showAlert('warning', `${currentDOFForApproval.id} reddedildi!`);
+            currentDOFForApproval = null;
+        }
+
+        // Tümünü onayla
+        function approveAll() {
+            if (confirm('Tüm bekleyen DÖF\'leri onaylamak istediğinizden emin misiniz?')) {
+                const count = pendingDOFs.length;
+                pendingDOFs = [];
+                loadPendingDOFs();
+                showAlert('success', `${count} DÖF toplu olarak onaylandı!`);
+            }
+        }
+
+        // Kalite metrikleri göster
+        function showQualityMetrics() {
+            alert('Kalite Metrikleri:\n\n• Onay Oranı: %85\n• Ortalama Çözüm Süresi: 5.2 gün\n• Müşteri Memnuniyeti: %92\n• Tekrar Eden Problemler: %8');
+        }
+
+        // Denetim planla
+        function scheduleAudit() {
+            showAlert('info', 'Denetim planlama özelliği demo sürümünde yakında eklenecek!');
+        }
+
+        // Toplu onay göster
+        function showBulkApproval() {
+            if (pendingDOFs.length === 0) {
+                showAlert('info', 'Onay bekleyen DÖF bulunmuyor.');
+                return;
+            }
+            approveAll();
+        }
+
+        // Kalite raporu oluştur
+        function generateQualityReport() {
+            showAlert('success', 'Kalite raporu oluşturuluyor... (Demo özelliği)');
+        }
+
+        // Alert göster
+        function showAlert(type, message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 70px; right: 20px; z-index: 1050; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
