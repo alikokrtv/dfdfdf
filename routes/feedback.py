@@ -2,7 +2,7 @@ from flask import Blueprint, request, flash, redirect, url_for, current_app
 from flask_login import current_user, login_required
 from models import User
 from flask_mail import Message
-from app import mail
+from extensions import mail
 import datetime
 
 feedback_bp = Blueprint('feedback', __name__, url_prefix='/feedback')

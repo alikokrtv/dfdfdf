@@ -1,5 +1,5 @@
 from flask import Blueprint, flash, redirect, url_for
-from app import db
+from extensions import db
 from models import User, Department, UserRole
 from datetime import datetime
 

@@ -4078,7 +4078,7 @@ def can_view_dof(dof, user):
 @login_required
 def delete_dof(dof_id):
     """DÖF silme işlemi"""
-    from app import db
+    from extensions import db
     
     dof = DOF.query.get_or_404(dof_id)
     

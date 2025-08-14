@@ -245,7 +245,7 @@ def register():
             
             # Doğrudan Flask-Mail kullanarak e-posta gönderimi (şifre sıfırlama mantığı gibi)
             from flask_mail import Message
-            from app import mail
+            from extensions import mail
             
             # E-posta ayarlarının doğru yüklendiğini kontrol et ve logla
             current_app.logger.info("E-posta ayarları: Server=" + str(current_app.config.get('MAIL_SERVER')) + 
@@ -379,7 +379,7 @@ def forgot_password():
                 try:
                     # Admin panelinden yapılan e-posta ayarlarını kullan (otomatik olarak app.py içinde yükleniyor)
                     from flask_mail import Message
-                    from app import mail
+                    from extensions import mail
                     
                     # E-posta ayarlarının doğru yüklendiğini kontrol et ve logla
                     current_app.logger.info(f"E-posta ayarları: Server={current_app.config.get('MAIL_SERVER')}, "

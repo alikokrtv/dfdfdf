@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from datetime import datetime
 from functools import wraps
-from app import db
+from extensions import db
 from models import ThankYou, User, Department, UserRole
 from forms import ThankYouForm
 from utils import create_notification, send_email
