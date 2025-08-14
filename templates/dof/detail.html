@@ -182,20 +182,6 @@
         <a href="{{ url_for('dof.list_dofs') }}" class="btn btn-secondary">
             <i class="fas fa-arrow-left me-1"></i> DÖF Listesine Dön
         </a>
-        
-        <!-- Düzenleme butonu: Taslak durumunda ve oluşturan kişi veya admin/kalite ise -->
-        {% if (dof.status == 0 and dof.created_by == current_user.id) or current_user.role in [0, 2] %}
-        <a href="{{ url_for('dof.edit_dof', dof_id=dof.id) }}" class="btn btn-info ms-2">
-            <i class="fas fa-edit me-1"></i> Düzenle
-        </a>
-        {% endif %}
-        
-        <!-- Silme butonu: Yetkisi olan kullanıcılar için -->
-        {% if dof.can_be_deleted_by(current_user) %}
-        <button type="button" class="btn btn-danger ms-2" onclick="confirmDelete({{ dof.id }}, '{{ dof.code or ('DÖF #' + dof.id|string) }}')">
-            <i class="fas fa-trash me-1"></i> Sil
-        </button>
-        {% endif %}
 
         <!-- İlk inceleme butonu: Taslak veya gönderildi durumundaki DÖF'ler için (sadece Kalite ve Admin) -->
         {% if current_user.role in [0, 2] and dof.status in [0, 1, 2] %}
@@ -1127,29 +1113,6 @@
         const currentInfo = document.getElementById('step-info-' + stepNo);
         if (currentInfo) {
             currentInfo.style.display = 'block';
-        }
-    }
-    
-    // DÖF silme onay dialog'u
-    function confirmDelete(dofId, dofCode) {
-        if (confirm('Bu DÖF\'ü silmek istediğinizden emin misiniz?\n\n' + dofCode + '\n\nBu işlem geri alınamaz!')) {
-            // Silme formu oluştur ve gönder
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/dof/' + dofId + '/delete';
-            
-            // CSRF token ekle
-            const csrfToken = document.querySelector('meta[name=csrf-token]');
-            if (csrfToken) {
-                const tokenInput = document.createElement('input');
-                tokenInput.type = 'hidden';
-                tokenInput.name = 'csrf_token';
-                tokenInput.value = csrfToken.getAttribute('content');
-                form.appendChild(tokenInput);
-            }
-            
-            document.body.appendChild(form);
-            form.submit();
         }
     }
 </script>

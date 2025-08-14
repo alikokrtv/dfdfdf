@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from app import app, db
+from extensions import db
 from models import Department, DOF, User
 from flask import current_app
 

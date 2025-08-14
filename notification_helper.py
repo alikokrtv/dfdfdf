@@ -6,7 +6,7 @@ import datetime
 import threading
 from flask import current_app
 from flask_mail import Message
-from extensions import db, mail
+from app import db, mail
 from models import User, Notification
 
 def send_direct_email(email, subject, body_html, body_text=None):

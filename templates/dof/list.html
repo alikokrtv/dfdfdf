@@ -173,11 +173,6 @@
                                     <i class="fas fa-edit"></i>
                                 </a>
                                 {% endif %}
-                                {% if dof.can_be_deleted_by(current_user) %}
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Sil" onclick="confirmDelete({{ dof.id }}, '{{ dof.code or ('DÖF #' + dof.id|string) }}')">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -239,28 +234,5 @@
             width: '100%'
         });
     });
-    
-    // DÖF silme onay dialog'u
-    function confirmDelete(dofId, dofCode) {
-        if (confirm('Bu DÖF\'ü silmek istediğinizden emin misiniz?\n\n' + dofCode + '\n\nBu işlem geri alınamaz!')) {
-            // Silme formu oluştur ve gönder
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/dof/' + dofId + '/delete';
-            
-            // CSRF token ekle
-            const csrfToken = document.querySelector('meta[name=csrf-token]');
-            if (csrfToken) {
-                const tokenInput = document.createElement('input');
-                tokenInput.type = 'hidden';
-                tokenInput.name = 'csrf_token';
-                tokenInput.value = csrfToken.getAttribute('content');
-                form.appendChild(tokenInput);
-            }
-            
-            document.body.appendChild(form);
-            form.submit();
-        }
-    }
 </script>
 {% endblock %}
